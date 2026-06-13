@@ -1,0 +1,9 @@
+# Keep macOS launchers as LF so they run after unzipping on a Mac,
+# regardless of the committer's core.autocrlf setting.
+*.command text eol=lf
+*.sh      text eol=lf
+
+# Windows scripts stay CRLF.
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+*.vbs text eol=crlf

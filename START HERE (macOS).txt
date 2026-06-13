@@ -1,0 +1,25 @@
+Oasis for macOS - start here
+==================================
+
+1. Double-click  "Setup Oasis.command"
+   It checks for Node.js, makes a Desktop launcher, and opens Oasis.
+
+If macOS blocks it ("cannot be opened because it is from an
+unidentified developer", or nothing happens):
+
+   * Right-click "Setup Oasis.command" -> Open -> Open.   (do this once)
+        - or -
+   * Open Terminal, drag this folder onto it to cd in, then run:
+        bash "Setup Oasis.command"
+        (this also works without changing any permissions)
+
+   After the first run, double-clicking works normally.
+
+Requirements
+------------
+   * macOS (Apple silicon or Intel)
+   * Node.js - free, from https://nodejs.org/en/download  (the setup checks for it)
+   * Claude Code + Codex recommended, not required
+
+Everything Oasis stores stays on this machine. No account, no telemetry.
+Open Oasis any time from the Desktop launcher, or run "Launch Oasis.command".

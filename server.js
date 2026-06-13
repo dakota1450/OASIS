@@ -2,7 +2,7 @@
 // Local personal dashboard: Ask (claude -p), idea capture + inline develop,
 // today's tasks, a journal, an image gallery, a daily briefing, a quiet ticker
 // of recent agent activity, and a one-click tool dock.
-// Zero npm dependencies. Node 24, Windows.
+// Zero npm dependencies. Node 18+, macOS & Windows.
 'use strict';
 
 const http = require('http');
@@ -12,6 +12,16 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 const { exec, spawn } = require('child_process');
+
+const IS_WIN = process.platform === 'win32';
+const IS_MAC = process.platform === 'darwin';
+
+// Open a file, folder, or URL with the OS's default handler.
+function osOpen(target) {
+  if (IS_WIN) return `start "" "${target}"`;
+  if (IS_MAC) return `open "${target}"`;
+  return `xdg-open "${target}"`;
+}
 
 const PORT = Number(process.env.PORT) || 7777;
 const ROOT = __dirname;
@@ -247,7 +257,10 @@ function scanTools() {
     if (d.name.startsWith('.')) continue;
     const dir = path.join(BASE, d.name);
     let entries = []; try { entries = fs.readdirSync(dir); } catch { continue; }
-    const bat = entries.find((n) => /^launch.*\.bat$/i.test(n)) || entries.find((n) => /\.bat$/i.test(n));
+    // Platform launch script: a .bat on Windows, a .command/.sh on macOS/Linux.
+    const isLaunch = (n) => IS_WIN ? /^launch.*\.bat$/i.test(n) : /^launch.*\.(command|sh)$/i.test(n);
+    const isScript = (n) => IS_WIN ? /\.bat$/i.test(n) : /\.(command|sh)$/i.test(n);
+    const bat = entries.find(isLaunch) || entries.find(isScript);
     let hasDev = false, displayName = d.name;
     if (entries.includes('package.json')) {
       const pkg = readJson(path.join(dir, 'package.json'), {});
@@ -265,7 +278,7 @@ function scanTools() {
   tools.sort((a, b) => b.lastModified.localeCompare(a.lastModified));
   const custom = readJson(TOOLS_FILE, []).map((t) => ({
     id: 'c:' + t.id, name: t.name, kind: 'custom', target: t.target,
-    actions: [/^https?:\/\//i.test(t.target) ? 'url' : (t.target.toLowerCase().endsWith('.bat') ? 'bat' : 'folder')],
+    actions: [/^https?:\/\//i.test(t.target) ? 'url' : (/\.(bat|command|sh)$/i.test(t.target) ? 'bat' : 'folder')],
   }));
   lastToolScan = [...custom, ...tools];
   return lastToolScan;
@@ -276,10 +289,28 @@ function launchTool(id, action) {
   if (!tool) return { ok: false, error: 'unknown tool — refresh and retry' };
   if (!tool.actions.includes(action)) return { ok: false, error: 'action not available' };
   let cmd = null, cwd = tool.dir || ROOT;
-  if (action === 'bat') { const b = tool.kind === 'custom' ? tool.target : tool.bat; cwd = path.dirname(b); cmd = `start "" "${b}"`; }
-  else if (action === 'dev') cmd = `start "Oasis — ${tool.name}" cmd /k "npm run dev"`;
-  else if (action === 'folder') cmd = `explorer "${tool.kind === 'custom' ? tool.target : tool.dir}"`;
-  else if (action === 'url') cmd = `start "" "${tool.target}"`;
+  if (action === 'bat') {
+    const b = tool.kind === 'custom' ? tool.target : tool.bat;
+    cwd = path.dirname(b);
+    if (IS_WIN) cmd = `start "" "${b}"`;
+    else if (IS_MAC) cmd = /\.(command|sh)$/i.test(b) ? `chmod +x "${b}" 2>/dev/null; open "${b}"` : osOpen(b);
+    else cmd = `sh "${b}"`;
+  }
+  else if (action === 'dev') {
+    if (IS_WIN) cmd = `start "Oasis — ${tool.name}" cmd /k "npm run dev"`;
+    else if (IS_MAC) {
+      // Terminal's `do script` runs a fresh shell that does NOT inherit exec's
+      // cwd, so we cd in — escaping any apostrophe in the path for the
+      // single-quoted -e argument via the '\'' idiom.
+      const q = cwd.replace(/'/g, "'\\''");
+      cmd = `osascript -e 'tell application "Terminal" to do script "cd \\"${q}\\" && npm run dev"' -e 'tell application "Terminal" to activate'`;
+    }
+    // Linux: the spawned terminal inherits cwd from exec's options, so no cd
+    // (which also removes the apostrophe-in-path quoting hazard).
+    else cmd = `x-terminal-emulator -e sh -c 'npm run dev; exec sh' 2>/dev/null || xterm -e sh -c 'npm run dev; exec sh'`;
+  }
+  else if (action === 'folder') cmd = osOpen(tool.kind === 'custom' ? tool.target : tool.dir);
+  else if (action === 'url') cmd = osOpen(tool.target);
   if (!cmd) return { ok: false, error: 'nothing to launch' };
   exec(cmd, { cwd, windowsHide: true }, () => {});
   return { ok: true };
@@ -502,7 +533,9 @@ function revealAsset(id) {
   const abs = decId(id);
   if (!abs || !underRoot(abs)) return { ok: false, error: 'forbidden' };
   if (!fs.existsSync(abs)) return { ok: false, error: 'not found' };
-  exec(`explorer /select,"${abs}"`, () => {});
+  if (IS_WIN) exec(`explorer /select,"${abs}"`, () => {});
+  else if (IS_MAC) exec(`open -R "${abs}"`, () => {});
+  else exec(`xdg-open "${path.dirname(abs)}"`, () => {});
   return { ok: true };
 }
 
@@ -673,6 +706,10 @@ async function handleApi(req, res, url) {
     const body = await readBody(req);
     const name = (body.name || '').trim(), target = (body.target || '').trim();
     if (!name || !target) return sendJson(res, 400, { error: 'name and target required' });
+    // The target is later interpolated into a shell command (osOpen). Reject the
+    // characters that could break out of the quoting / trigger substitution, so a
+    // pasted path or URL can't smuggle in a command. Normal paths/URLs don't use these.
+    if (/["`$\r\n]/.test(target)) return sendJson(res, 400, { error: 'target can\'t contain " ` $ or line breaks' });
     const custom = readJson(TOOLS_FILE, []);
     custom.unshift({ id: newId(), name, target });
     writeJson(TOOLS_FILE, custom);

@@ -3,7 +3,7 @@
 **A calm home base for people who build with AI.**
 
 Oasis is a small, private desktop dashboard for people who work with AI coding
-tools — built for **Claude Code** and **Codex** on Windows. The whole interface
+tools — built for **Claude Code** and **Codex** on **macOS and Windows**. The whole interface
 floats as glass over a living sea: ask anything, catch an idea and develop it
 into angles, keep your day's tasks and a journal, browse the images you generate,
 launch your projects, and score the work with lo-fi, ambient, or Spotify.
@@ -35,7 +35,8 @@ account, no telemetry, nothing phoned home.
 - **Music** — Lo-Fi, Ambient/downtempo, or **Spotify** (paste any link, use a
   preset, or connect your own account).
 - **Tool dock** — auto-discovers the projects in your build folder (anything
-  with a `Launch *.bat` or an `npm run dev`) for one-click launch.
+  with a `Launch` script — `.bat` on Windows, `.command`/`.sh` on macOS — or an
+  `npm run dev`) for one-click launch.
 - **Recent agent work** — a quiet ticker of your latest Claude Code & Codex
   sessions; click to see them all and turn any into a task or journal note.
 - **Command palette** (`Ctrl K`), **focus timer**, and **scenes** round it out.
@@ -44,7 +45,7 @@ account, no telemetry, nothing phoned home.
 
 ## Requirements
 
-- Windows 10 or 11
+- macOS (Apple silicon or Intel) **or** Windows 10 / 11
 - [Node.js](https://nodejs.org/en/download) (free; LTS recommended)
 - Recommended for the full experience: **Claude Code** (for Ask and Ideas) and
   **Codex** (its generated images flow into the Gallery). Oasis still runs fine
@@ -55,15 +56,20 @@ account, no telemetry, nothing phoned home.
 ## Setup (after you download)
 
 1. Unzip Oasis anywhere you like.
-2. Double-click **`Setup Oasis.bat`**. It checks for Node.js, creates a desktop
-   shortcut, and opens Oasis.
+2. Run the setup launcher for your platform:
+   - **Windows** — double-click **`Setup Oasis.bat`**.
+   - **macOS** — double-click **`Setup Oasis.command`**. The first time, macOS
+     may ask you to confirm an unsigned script: right-click → **Open**, or run
+     `bash "Setup Oasis.command"` once (see `START HERE (macOS).txt`).
+
+   It checks for Node.js, creates a shortcut/launcher, and opens Oasis.
 3. Oasis opens in its own window and runs a one-minute setup wizard: your name,
    your projects folder, your default station, and your scene. That's it — it
    builds itself around your preferences.
 
-After that, open Oasis any time from the **Oasis** desktop shortcut (or
-`Launch Oasis.bat`). To change preferences later, click the settings icon in the
-top-right corner.
+After that, open Oasis any time from the **Oasis** shortcut (or
+`Launch Oasis.bat` on Windows / `Launch Oasis.command` on macOS). To change
+preferences later, click the settings icon in the top-right corner.
 
 > Oasis listens on `http://localhost:7777`. Everything stays on your machine.
 
@@ -82,11 +88,12 @@ nothing leaves your machine except the standard Spotify login.
 Oasis is free. To build a clean copy to hand out:
 
 1. Run **`Package Oasis.bat`** (or `powershell -File package.ps1`).
-2. It produces `dist\Oasis.zip` — the app with **empty data and no personal
-   files** — and copies the same zip to `docs\download\Oasis.zip`, which is what
-   the marketing page links to.
+2. It produces two clean zips — the app with **empty data and no personal
+   files** — `dist\Oasis-Windows.zip` and `dist\Oasis-macOS.zip`, and copies both
+   into `docs\download\`, which is what the marketing page links to (the page
+   highlights the right one for each visitor's OS).
 3. Commit and push `docs\` and enable **GitHub Pages** (see `PUBLISH.md`). The
-   download button on the site then serves your zip directly.
+   download buttons on the site then serve your zips directly.
 
 The **marketing page** lives in `docs/` as a self-contained `index.html` (the
 GitHub Pages site). You can also preview it locally at
@@ -103,14 +110,19 @@ public/                the app
   app.js                 UI logic: ask, ideas, today, journal, gallery, music, setup
   style.css              sea-glass theme
   assets/                the ocean backdrops (video + photo)
-docs/                  the GitHub Pages marketing site + the download
-  index.html             Oasis landing page
-  download/Oasis.zip     the packaged app (built by package.ps1)
+docs/                  the GitHub Pages marketing site + the downloads
+  index.html             Oasis landing page (interactive canvas sea)
+  download/              the packaged apps (built by package.ps1)
+    Oasis-Windows.zip
+    Oasis-macOS.zip
 data/                  your ideas, tasks, journal, preferences (local only)
 assets/                images you import or keep
-Setup Oasis.bat        first-run setup for a fresh download
-Launch Oasis.bat       silent launcher (-> Oasis.vbs)
-Package Oasis.bat      build a clean dist\Oasis.zip + docs\download\Oasis.zip
+Setup Oasis.bat        Windows first-run setup for a fresh download
+Launch Oasis.bat       Windows silent launcher (-> Oasis.vbs)
+Setup Oasis.command    macOS first-run setup
+Launch Oasis.command   macOS launcher (starts the server, opens an app window)
+START HERE (macOS).txt macOS quick-start + Gatekeeper note
+Package Oasis.bat      build clean Windows + macOS zips into docs\download\
 PUBLISH.md             how to publish the site on GitHub Pages
 ```
 

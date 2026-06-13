@@ -1,21 +1,24 @@
 # Publishing the Oasis site on GitHub Pages
 
-The marketing page and the download both live in **`docs/`**, which is the one
+The marketing page and the downloads all live in **`docs/`**, which is the one
 folder GitHub Pages can serve straight from your `main` branch — no separate
 `gh-pages` branch, no build step.
 
 ```
 docs/
-  index.html            the Oasis landing page
-  assets/               hero images
-  download/Oasis.zip    the packaged app (built by Package Oasis.bat)
-  .nojekyll             tells Pages to serve the folder as-is
+  index.html                   the Oasis landing page (interactive canvas sea)
+  assets/                      hero images
+  download/Oasis-Windows.zip   the packaged Windows app (built by Package Oasis.bat)
+  download/Oasis-macOS.zip     the packaged macOS app
+  .nojekyll                    tells Pages to serve the folder as-is
 ```
 
 ## One-time publish
 
-1. **Build the download** so `docs/download/Oasis.zip` is current:
+1. **Build the downloads** so both zips in `docs/download/` are current:
    - Double-click **`Package Oasis.bat`** (or run `powershell -File package.ps1`).
+   - This writes `Oasis-Windows.zip` and `Oasis-macOS.zip`; the landing page
+     auto-highlights the right one for each visitor's OS.
 
 2. **Put the project on GitHub** (if it isn't already):
    ```powershell
@@ -38,14 +41,15 @@ docs/
    ```
    https://<you>.github.io/oasis/
    ```
-   The download button points at `./download/Oasis.zip`, so it just works.
+   The download buttons point at `./download/Oasis-Windows.zip` and
+   `./download/Oasis-macOS.zip`, so they just work.
 
 ## Updating later
 
 Whenever you change the app or the page:
 
 ```powershell
-powershell -File package.ps1      # refreshes docs/download/Oasis.zip
+powershell -File package.ps1      # refreshes both zips in docs/download/
 git add .
 git commit -m "Update Oasis"
 git push
@@ -55,10 +59,11 @@ Pages redeploys automatically on every push to `main`.
 
 ## Notes
 
-- **`Oasis.zip` is ~18 MB** (it bundles the looping ocean videos). That's fine
-  for GitHub Pages (100 MB/file limit). If you'd rather not commit a binary that
-  size, attach the zip to a **GitHub Release** instead and change the download
-  link in `docs/index.html` from `./download/Oasis.zip` to the release asset URL.
+- **Each zip is ~18 MB** (both bundle the looping ocean videos). That's fine
+  for GitHub Pages (100 MB/file limit). If you'd rather not commit binaries that
+  size, attach them to a **GitHub Release** instead and change the download
+  links in `docs/index.html` from `./download/Oasis-Windows.zip` /
+  `./download/Oasis-macOS.zip` to the release asset URLs.
 - Want a custom domain? Add a `CNAME` file in `docs/` with your domain and set it
   under Settings → Pages → Custom domain.
 - The same `docs/index.html` is also served locally by the app at
