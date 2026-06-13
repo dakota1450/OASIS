@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en" data-phase="day">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Oasis</title>
+<meta name="description" content="A calm home base for people who build with AI.">
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><path d='M14 40h36l-7 11H21z' fill='%23ffffff'/><path d='M32 9v28M32 13l15 22H32z' fill='none' stroke='%23ffffff' stroke-width='3' stroke-linejoin='round'/></svg>">
+</head>
+<body>
+
+<!-- ===== inline icon set (stroke, currentColor) — no emoji anywhere ===== -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <symbol id="i-boat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"><path d="M4.5 15h15l-2.6 4.2H7.1z"/><path d="M12 3.4v11.6M12 6l6.4 9H12z"/></symbol>
+  <symbol id="i-send" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h13M12 6l6 6-6 6"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l4.5 4.5"/></symbol>
+  <symbol id="i-feather" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"><path d="M20 5c-8 0-13 4-14 13l9-9M16 5l-3 3M9.5 18H5"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.4 4.4L19 7.4"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M3 7.5A1.5 1.5 0 0 1 4.5 6h4l2 2h7A1.5 1.5 0 0 1 19 9.5v7A1.5 1.5 0 0 1 17.5 18h-13A1.5 1.5 0 0 1 3 16.5z"/></symbol>
+  <symbol id="i-expand" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 15v5h-5M4 4l6 6M20 20l-6-6"/></symbol>
+  <symbol id="i-image" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="14" rx="2"/><path d="M3.8 16l4.7-4.5 3.5 3.4 3-2.8 5.5 5.4"/><circle cx="9" cy="9.5" r="1.4"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6.5A1.5 1.5 0 0 1 6.5 5H15"/></symbol>
+  <symbol id="i-save" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M6.5 4h11a1 1 0 0 1 1 1v15l-6.5-4.3L5.5 20V5a1 1 0 0 1 1-1z"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.2v13.6L19 12z" fill="currentColor"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M9 5v14M15 5v14"/></symbol>
+  <symbol id="i-note" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M9 17V5l10-2v12"/><circle cx="6.5" cy="17.5" r="2.5"/><circle cx="16.5" cy="15.5" r="2.5"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 7h7M15 7h5M4 12h3M11 12h9M4 17h9M17 17h3"/><circle cx="13" cy="7" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="15" cy="17" r="2"/></symbol>
+  <symbol id="i-command" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M9 6.5A2.5 2.5 0 1 0 6.5 9H9zm0 0v9m0-9h6m-6 9A2.5 2.5 0 1 1 6.5 15H9zm6-9A2.5 2.5 0 1 1 17.5 9H15zm0 0v9m0 0h-6m6 0a2.5 2.5 0 1 0 2.5-2.5H15z"/></symbol>
+  <symbol id="i-timer" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13.5" r="7.5"/><path d="M12 13.5V9M9.5 2.5h5M19 6l1.6-1.6"/></symbol>
+  <symbol id="i-grid" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><rect x="4" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.4"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.4"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.4"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M12 3.5l2.6 5.3 5.8.9-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.2-4.1 5.8-.9z"/></symbol>
+  <symbol id="i-star-fill" viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.3 5.8.9-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.2-4.1 5.8-.9z" fill="currentColor"/></symbol>
+  <symbol id="i-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M2.5 12h2M19.5 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/></symbol>
+</defs></svg>
+
+<!-- ======= the sea — looping cinemagraph video (photo poster = instant paint + fallback) ======= -->
+<img id="sea-poster" class="sea on" src="assets/ocean-day.jpg?v=1" alt="" draggable="false">
+<video id="sea-a" class="sea" muted loop playsinline preload="auto" disablepictureinpicture></video>
+<video id="sea-b" class="sea" muted loop playsinline preload="auto" disablepictureinpicture></video>
+<div id="sea-tint"></div>
+<div class="vignette"></div>
+
+<!-- ======= floating UI ======= -->
+<main id="ui">
+
+  <header id="top">
+    <div class="brand"><span class="brand-mark"><svg class="ic"><use href="#i-boat"></use></svg></span><span class="brand-name">Oasis</span></div>
+    <div class="top-clock"><span id="greeting">good day</span><span class="sep">·</span><span id="clock">--:--</span></div>
+    <div class="top-right">
+      <button id="btn-briefing" class="chip" title="Today's briefing"><svg class="ic"><use href="#i-sun"></use></svg></button>
+      <button id="btn-command" class="chip" title="Command palette (Ctrl K)"><svg class="ic"><use href="#i-command"></use></svg><span class="kbd">K</span></button>
+      <button id="btn-timer" class="chip" title="Focus timer"><svg class="ic"><use href="#i-timer"></use></svg><span id="timer-chip" class="hidden"></span></button>
+      <button id="btn-gallery" class="chip" title="Gallery"><svg class="ic"><use href="#i-grid"></use></svg></button>
+      <button id="open-settings" class="chip" title="Preferences"><svg class="ic"><use href="#i-settings"></use></svg></button>
+    </div>
+  </header>
+
+  <!-- ASK (center hero — the search bar, reimagined) -->
+  <section id="ask">
+    <form id="ask-form" autocomplete="off">
+      <span class="ask-ico"><svg class="ic"><use href="#i-search"></use></svg></span>
+      <input id="ask-input" type="text" placeholder="Ask anything, or capture a thought…" spellcheck="false">
+      <button type="button" id="ask-ideas" title="Brainstorm ideas">Ideas</button>
+      <button type="submit" id="ask-go" title="Ask"><svg class="ic"><use href="#i-send"></use></svg></button>
+    </form>
+    <div id="ask-answer"></div>
+  </section>
+
+  <!-- LEFT PANEL: Today | Ideas -->
+  <aside id="left" class="panel">
+    <div class="panel-tabs">
+      <button class="ptab active" data-tab="today">Today</button>
+      <button class="ptab" data-tab="ideas">Ideas</button>
+    </div>
+    <div class="panel-pane active" data-pane="today">
+      <div class="capture"><input id="today-input" type="text" placeholder="What needs doing?" autocomplete="off"></div>
+      <div class="panel-body" id="today-list"></div>
+    </div>
+    <div class="panel-pane" data-pane="ideas">
+      <div class="capture"><input id="ideas-input" type="text" placeholder="Catch an idea" autocomplete="off"></div>
+      <div class="panel-body" id="ideas-list"></div>
+    </div>
+  </aside>
+
+  <!-- RIGHT PANEL: Journal (new) -->
+  <aside id="right" class="panel">
+    <div class="panel-head"><h2>Journal</h2><span class="panel-sub" id="journal-count">your journal</span></div>
+    <div class="journal-compose">
+      <textarea id="journal-input" rows="2" placeholder="What's on your mind?" spellcheck="true"></textarea>
+      <div class="journal-foot">
+        <div class="mood" id="journal-mood"></div>
+        <button id="journal-save" title="Save entry"><svg class="ic"><use href="#i-feather"></use></svg>Save</button>
+      </div>
+    </div>
+    <div class="panel-body" id="journal-list"></div>
+  </aside>
+
+  <!-- bottom: activity ticker + dock -->
+  <footer id="dockbar">
+    <div id="ticker" title="Recent agent work — click to see all"><span class="tk-text"></span></div>
+    <div id="dock"></div>
+  </footer>
+
+</main>
+
+<!-- ======= music (floating, bottom-left) ======= -->
+<div id="player" class="collapsed" data-tab="lofi">
+  <button id="player-toggle" title="Music">
+    <span id="pl-state"><svg class="ic"><use href="#i-note"></use></svg></span><span id="pl-now">Music</span>
+    <span class="eq"><i></i><i></i><i></i><i></i></span>
+  </button>
+  <div id="player-panel">
+    <div class="pl-tabs">
+      <button class="pl-tab active" data-src="lofi">Lo-Fi</button>
+      <button class="pl-tab" data-src="old">Ambient</button>
+      <button class="pl-tab" data-src="spotify">Spotify</button>
+    </div>
+
+    <div class="pl-pane active" data-pane="lofi">
+      <p class="pl-cap">Lo-fi &amp; chillhop to focus to.</p>
+      <div id="lofi-stations" class="station-grid"></div>
+    </div>
+
+    <div class="pl-pane" data-pane="old">
+      <p class="pl-cap">Ambient &amp; downtempo for deep focus.</p>
+      <div id="amb-stations" class="station-grid"></div>
+    </div>
+
+    <div class="pl-pane" data-pane="spotify">
+      <div class="sp-row">
+        <input id="sp-url" type="text" placeholder="Paste a Spotify playlist, album, or track link" autocomplete="off">
+        <button id="sp-load">Play</button>
+      </div>
+      <div id="sp-presets" class="station-grid"></div>
+      <div id="sp-embed"></div>
+      <div id="sp-connect">
+        <button id="sp-connect-btn">Connect your Spotify</button>
+        <div id="sp-playlists"></div>
+        <div id="sp-setup" class="hidden">
+          <p>To browse your own playlists, create a free Spotify app, add this redirect URI, and paste the Client ID:</p>
+          <code id="sp-redirect">—</code>
+          <div class="sp-row">
+            <input id="sp-clientid" type="text" placeholder="Spotify Client ID" autocomplete="off">
+            <button id="sp-save-id">Save</button>
+          </div>
+          <a href="https://developer.spotify.com/dashboard" target="_blank" rel="noopener">Open the Spotify dashboard</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="radio-bar">
+      <button id="radio-play" title="Play / pause"><svg class="ic"><use href="#i-play"></use></svg></button>
+      <input id="radio-vol" type="range" min="0" max="100" value="60" title="Volume">
+      <span id="radio-label">Pick a station</span>
+    </div>
+    <audio id="radio-audio" preload="none"></audio>
+  </div>
+</div>
+
+<!-- ======= command palette ======= -->
+<div id="palette" class="hidden" role="dialog" aria-modal="true" aria-label="Command palette">
+  <div class="pal-shade"></div>
+  <div class="pal-box">
+    <div class="pal-head">
+      <svg class="ic"><use href="#i-search"></use></svg>
+      <input id="palette-input" type="text" placeholder="A command — ask, launch, focus, write, set the scene…" spellcheck="false" autocomplete="off">
+    </div>
+    <div id="palette-list" class="pal-list"></div>
+    <div class="pal-foot"><span><b>↑↓</b> move</span><span><b>↵</b> run</span><span><b>esc</b> close</span></div>
+  </div>
+</div>
+
+<!-- ======= focus timer ======= -->
+<div id="timer-pop" class="hidden">
+  <div class="tp-readout" id="tp-readout">25:00</div>
+  <div class="tp-label" id="tp-label">focus session</div>
+  <div class="tp-presets" id="tp-presets">
+    <button data-min="15">15</button><button data-min="25" class="sel">25</button><button data-min="50">50</button><button data-min="90">90</button>
+  </div>
+  <div class="tp-ops">
+    <button id="tp-startstop" class="primary">Start</button>
+    <button id="tp-reset" class="ghost">Reset</button>
+  </div>
+</div>
+
+<!-- ======= gallery overlay ======= -->
+<div id="gallery" class="hidden">
+  <div class="gal-shade"></div>
+  <div class="gal-box">
+    <div class="gal-head">
+      <h2>Gallery</h2>
+      <input id="import-input" type="text" placeholder="Paste an image URL to keep" autocomplete="off">
+      <button id="gallery-close" title="Close"><svg class="ic"><use href="#i-x"></use></svg></button>
+    </div>
+    <div id="gallery-grid"></div>
+  </div>
+</div>
+
+<!-- lightbox -->
+<div id="lightbox" class="hidden">
+  <div class="lb-shade"></div>
+  <figure class="lb-frame">
+    <img id="lb-img" alt="">
+    <figcaption>
+      <span id="lb-name"></span>
+      <div class="lb-ops">
+        <button id="lb-reveal">Open folder</button>
+        <button id="lb-copy">Copy name</button>
+        <button id="lb-close">Close</button>
+      </div>
+    </figcaption>
+  </figure>
+</div>
+
+<!-- add-tool popover -->
+<div id="tool-add" class="hidden">
+  <form id="tool-add-form" autocomplete="off">
+    <input id="tool-name" type="text" placeholder="Name">
+    <input id="tool-target" type="text" placeholder="URL, folder, or .bat path">
+    <button type="submit">Add</button>
+  </form>
+</div>
+
+<div id="toast"></div>
+
+<nav id="scene" title="Time of day">
+  <button data-phase="auto" class="active">Auto</button>
+  <button data-phase="dawn">Dawn</button>
+  <button data-phase="day">Day</button>
+  <button data-phase="dusk">Dusk</button>
+  <button data-phase="night">Night</button>
+</nav>
+
+<!-- ======= first-run setup / preferences ======= -->
+<div id="setup" class="hidden">
+  <div class="setup-shade"></div>
+  <div class="setup-card">
+    <div class="setup-head">
+      <span class="brand-mark lg"><svg class="ic"><use href="#i-boat"></use></svg></span>
+      <div>
+        <h1>Welcome to Oasis</h1>
+        <p class="setup-tag">Let's get you set up. This takes about a minute.</p>
+      </div>
+    </div>
+
+    <div class="setup-steps" id="setup-steps">
+      <section class="setup-step active" data-step="0">
+        <h2>What should we call you?</h2>
+        <p class="step-hint">Used for the greeting at the top of the screen.</p>
+        <input id="su-name" type="text" placeholder="Your name" autocomplete="off" maxlength="40">
+      </section>
+
+      <section class="setup-step" data-step="1">
+        <h2>Where do your projects live?</h2>
+        <p class="step-hint">Oasis scans this folder for launchable tools (a <code>Launch *.bat</code> or an <code>npm run dev</code>) and adds them to your dock.</p>
+        <input id="su-builddir" type="text" placeholder="C:\Users\you\Documents\build" autocomplete="off" spellcheck="false">
+        <label class="su-check"><input type="checkbox" id="su-activity" checked> Show recent Claude&nbsp;Code &amp; Codex activity in the ticker</label>
+      </section>
+
+      <section class="setup-step" data-step="2">
+        <h2>Pick your sound</h2>
+        <p class="step-hint">Your default station when Oasis opens. You can change it anytime.</p>
+        <div class="su-radio" id="su-sound"></div>
+      </section>
+
+      <section class="setup-step" data-step="3">
+        <h2>Set the scene</h2>
+        <p class="step-hint">The backdrop shifts with the time of day. Keep it on Auto to follow your clock.</p>
+        <div class="su-phases" id="su-phase"></div>
+      </section>
+
+      <section class="setup-step" data-step="4">
+        <h2>You're all set</h2>
+        <p class="step-hint">Oasis is free and runs entirely on your machine — no account, no key, nothing to enter.</p>
+        <p class="step-hint dim">Everything you do stays on this machine. Oasis makes no account and phones nothing home. Press <b>Enter Oasis</b> to dive in.</p>
+      </section>
+    </div>
+
+    <div class="setup-foot">
+      <div class="setup-dots" id="setup-dots"></div>
+      <div class="setup-nav">
+        <button id="su-back" class="ghost">Back</button>
+        <button id="su-next" class="primary">Continue</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

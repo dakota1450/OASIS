@@ -1,0 +1,43 @@
+Oasis - License
+================
+
+Copyright (c) 2026.
+
+Oasis is free. You can download it, install it, and use it for your own personal
+and professional work at no cost. There is no account, no subscription, and no
+recurring fee.
+
+1. YOUR LICENSE
+   You receive a perpetual, royalty-free license to install and use Oasis on any
+   computer you own or control. Updates are free.
+
+2. REDISTRIBUTION
+   You're welcome to share the official download link. Please don't repackage or
+   republish Oasis as your own product or remove these notices.
+
+3. YOUR DATA AND PRIVACY
+   Oasis runs entirely on your machine. It creates no account and sends no
+   analytics or usage data anywhere. Your ideas, tasks, journal, preferences, and
+   imported images stay in this folder on your computer. The only network calls
+   Oasis makes are ones you trigger yourself: streaming the radio stations you
+   pick, the Spotify embed you load, image URLs you choose to import, the Spotify
+   account you choose to connect, and your own local Claude CLI when you use Ask
+   or develop an idea.
+
+4. THIRD-PARTY SERVICES
+   Radio playback uses public internet radio streams (SomaFM, laut.fm, FluxFM and
+   others) and Spotify's official embed/Web API. Those services are owned by their
+   respective providers and subject to their own terms. Oasis is not affiliated
+   with, sponsored by, or endorsed by Spotify, Anthropic (Claude), OpenAI (Codex),
+   or any radio provider. All trademarks belong to their owners.
+
+5. NO WARRANTY
+   Oasis is provided "as is", without warranty of any kind, express or implied.
+   Internet radio streams and third-party services can change or go offline at any
+   time and are outside the author's control.
+
+6. LIMITATION OF LIABILITY
+   To the maximum extent permitted by law, the author is not liable for any
+   damages arising from the use or inability to use Oasis.
+
+Using Oasis means you accept these terms.

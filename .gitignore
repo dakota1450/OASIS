@@ -1,0 +1,16 @@
+# Build staging + artifacts (the published download lives in docs/download/)
+dist/
+node_modules/
+
+# Local personal data — the packaged download ships its own fresh, empty data,
+# and the app recreates this folder on first run. Keep your notes/journal private.
+data/
+
+# User-imported / generated images
+assets/*
+!assets/README.txt
+
+# OS / editor cruft
+Thumbs.db
+.DS_Store
+*.log
