@@ -22,10 +22,6 @@ foreach ($f in @('server.js','Oasis.vbs','Launch Oasis.bat','Setup Oasis.bat','s
 
 # the app itself
 Copy-Item (Join-Path $root 'public') (Join-Path $stage 'public') -Recurse -Force
-# drop the unused legacy backdrops to keep the download small
-foreach ($g in @('meadow-dawn.jpg','meadow-day.jpg','meadow-dusk.jpg','meadow-night.jpg','pond.jpg','pond-alt.jpg')) {
-  $p = Join-Path $stage "public\assets\$g"; if (Test-Path $p) { Remove-Item $p -Force }
-}
 
 # fresh data: empty lists, plus one friendly welcome idea so the Ideas tab isn't bare
 New-Item -ItemType Directory -Force -Path (Join-Path $stage 'data') | Out-Null
