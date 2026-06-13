@@ -3,1096 +3,513 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Oasis — A calm home base for people who build with AI</title>
-<meta name="description" content="Oasis is a local, private desktop dashboard for people who build with Claude Code and Codex on Mac and Windows. Ask, capture ideas, develop them into angles, track tasks, and launch your tools — all floating over a living, interactive sea you steer with your cursor. Free, runs on your machine, nothing phoned home.">
-<meta property="og:title" content="Oasis — A calm home base for people who build with AI">
-<meta property="og:description" content="A local, private desktop dashboard for builders. Ask, capture and develop ideas, track your day, launch your tools — over a living sea you steer with your cursor. Free, for Mac & Windows.">
+<title>Oasis — a calm place to build</title>
+<meta name="description" content="Oasis is a local, private desktop home base for people who build with Claude Code and Codex — a calm window that floats over a living sea. Ask, develop ideas into angles, track your day, launch your tools. Free, for Mac & Windows. Runs on your machine; nothing phoned home.">
+<meta property="og:title" content="Oasis — a calm place to build">
+<meta property="og:description" content="A private home base that floats over the sea, for people who make things with Claude Code and Codex. Free. Mac & Windows. Runs on your machine — nothing phoned home.">
 <meta property="og:type" content="website">
+<meta name="theme-color" content="#052b38">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><path d='M4.5 15h15l-2.6 4.2H7.1z' fill='%23ef8a5d'/><path d='M12 3.4v11.6M12 6l6.4 9H12z' fill='none' stroke='%23ffffff' stroke-width='1.7' stroke-linejoin='round'/></svg>">
-
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
-
 <style>
   :root{
-    --ink:#f3fbfd;
-    --dim:rgba(243,251,253,.74);
-    --faint:rgba(243,251,253,.48);
-    --aqua:#46c6d6;
+    --ink:#f5fbfd;
+    --dim:rgba(245,251,253,.74);
+    --faint:rgba(245,251,253,.46);
+    --aqua:#7ddbe6;
+    --aqua-deep:#46c6d6;
     --coral:#ef8a5d;
-    --codex:#1fb6a6;
-    --bg:#052b38;
-    --bg-deep:#03222d;
-    --panel:rgba(8,48,64,.46);
-    --panel-strong:rgba(6,40,55,.74);
-    --sheet:#0a3242;
-    --line:rgba(255,255,255,.16);
-    --line-soft:rgba(255,255,255,.09);
-    --shadow:0 18px 48px rgba(0,0,0,.42);
-    --font-body:'Inter',system-ui,-apple-system,"Segoe UI",sans-serif;
-    --radius:14px;
-    --maxw:1240px;
+    --sea:#052b38;
+    --sea-deep:#03212c;
+    --mono:"SFMono-Regular",ui-monospace,"Cascadia Mono","Consolas",monospace;
+    --sans:system-ui,-apple-system,"Segoe UI","Helvetica Neue",Arial,sans-serif;
+    --serif:Georgia,"Times New Roman",serif;
+    --caps:.28em;
     --ease:cubic-bezier(.22,1,.36,1);
+    --pad:clamp(20px,5vw,64px);
   }
-
   *{box-sizing:border-box;}
-  html{scroll-behavior:smooth;-webkit-text-size-adjust:100%;}
-  @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto;}}
-
+  html{-webkit-text-size-adjust:100%;}
+  @media (prefers-reduced-motion:no-preference){html{scroll-behavior:smooth;}}
   body{
-    margin:0;
-    font-family:var(--font-body);
-    color:var(--ink);
-    background:var(--bg-deep);
-    line-height:1.65;
-    -webkit-font-smoothing:antialiased;
-    text-rendering:optimizeLegibility;
-    overflow-x:hidden;
+    margin:0;background:var(--sea-deep);color:var(--ink);
+    font-family:var(--sans);line-height:1.6;-webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;overflow-x:hidden;
   }
-  body::before{
-    content:"";position:fixed;inset:0;z-index:-2;
-    background:
-      radial-gradient(1200px 800px at 82% -10%, rgba(70,198,214,.12), transparent 60%),
-      radial-gradient(1000px 900px at 4% 112%, rgba(239,138,93,.10), transparent 60%),
-      var(--bg-deep);
-  }
-
   a{color:inherit;text-decoration:none;}
-  h1,h2,h3{font-family:var(--font-body);font-weight:800;line-height:1.04;margin:0;letter-spacing:-.02em;}
-  .wrap{max-width:var(--maxw);margin:0 auto;padding:0 28px;}
 
-  .label{
-    font-size:12px;letter-spacing:.22em;text-transform:uppercase;
-    color:var(--aqua);font-weight:700;display:inline-flex;align-items:center;gap:9px;
-  }
-  .label::before{content:"";width:22px;height:1px;background:var(--aqua);opacity:.7;}
+  /* ---------------- the sea (fixed film plate) ---------------- */
+  #sea{position:fixed;inset:0;z-index:0;overflow:hidden;background:var(--sea);}
+  #sea .plate{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;}
+  #sea-poster{z-index:0;}
+  #sea-day{z-index:1;opacity:1;transition:opacity 1s linear;}
+  #sea-dusk{z-index:2;opacity:0;transition:opacity 2.6s var(--ease);}
+  #sea.dusk #sea-dusk{opacity:1;}
+  #sea-scrim{position:absolute;inset:0;z-index:3;pointer-events:none;background:
+    linear-gradient(180deg, rgba(3,26,35,.72) 0%, rgba(3,26,35,.12) 14%, rgba(3,26,35,0) 34%, rgba(3,26,35,0) 66%, rgba(3,26,35,.34) 84%, rgba(3,26,35,.78) 100%),
+    radial-gradient(135% 100% at 50% 42%, transparent 52%, rgba(3,20,28,.46) 100%);}
+  /* reduced-motion / no-JS: hold the poster, hide video */
+  .no-motion #sea-day,.no-motion #sea-dusk{display:none;}
 
-  /* ---------------- Liquid glass ---------------- */
-  .liquid-glass{
-    background:rgba(255,255,255,0.01);
-    background-blend-mode:luminosity;
-    -webkit-backdrop-filter:blur(4px);
-    backdrop-filter:blur(4px);
-    border:none;
-    box-shadow:inset 0 1px 1px rgba(255,255,255,0.1);
-    position:relative;overflow:hidden;
-    color:var(--ink);
-  }
-  .liquid-glass::before{
-    content:"";position:absolute;inset:0;border-radius:inherit;padding:1.4px;
-    background:linear-gradient(180deg, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0.15) 20%, rgba(255,255,255,0) 40%, rgba(255,255,255,0) 60%, rgba(255,255,255,0.15) 80%, rgba(255,255,255,0.45) 100%);
-    -webkit-mask:linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-    -webkit-mask-composite:xor;
-    mask:linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-    mask-composite:exclude;
-    pointer-events:none;
-  }
-  .liquid-glass > svg, .liquid-glass > span{position:relative;z-index:1;}
-  .liquid-glass:hover{background:rgba(255,255,255,0.07);}
+  /* ---------------- persistent chrome ---------------- */
+  .chrome{position:fixed;left:0;right:0;z-index:40;display:flex;align-items:center;justify-content:space-between;
+    gap:16px;padding:18px var(--pad);pointer-events:none;}
+  .chrome.top{top:0;}
+  .chrome a,.chrome button{pointer-events:auto;}
+  .mark{display:inline-flex;align-items:center;gap:10px;font-size:12px;font-weight:700;letter-spacing:var(--caps);text-transform:uppercase;}
+  .mark svg{display:block;}
+  .meta{display:flex;align-items:center;gap:14px;font-family:var(--mono);font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--dim);}
+  .meta .dot{width:3px;height:3px;border-radius:50%;background:var(--aqua-deep);opacity:.8;}
+  #clock{color:var(--ink);}
+  @media (max-width:680px){.meta .hidelet{display:none;}}
 
-  /* ---------------- Blur-fade-up ---------------- */
-  @keyframes blurFadeUp{
-    from{opacity:0;filter:blur(20px);transform:translateY(40px);}
-    to{opacity:1;filter:blur(0);transform:translateY(0);}
-  }
-  .fade-up{opacity:0;}
-  .fade-up.in{animation:blurFadeUp 1s ease-out forwards;}
-  @media (prefers-reduced-motion:reduce){
-    .fade-up,.fade-up.in{opacity:1 !important;filter:none !important;transform:none !important;animation:none !important;}
-  }
+  /* wake-line — the only wayfinding */
+  #wake{position:fixed;left:max(14px,2.4vw);top:16vh;bottom:13vh;width:2px;z-index:40;pointer-events:none;}
+  #wake .track{position:absolute;inset:0;background:rgba(245,251,253,.12);border-radius:2px;}
+  #wake .fill{position:absolute;left:0;right:0;top:0;height:0;background:linear-gradient(180deg,var(--aqua),var(--coral));border-radius:2px;box-shadow:0 0 10px rgba(239,138,93,.5);}
+  #wake .boat{position:absolute;left:50%;bottom:-22px;width:18px;height:18px;margin-left:-9px;opacity:.35;transition:opacity .4s var(--ease);color:var(--coral);}
+  #wake.arrived .boat{opacity:1;}
+  @media (max-width:680px){#wake{display:none;}}
 
-  /* ---------------- Buttons ---------------- */
-  .btn{
-    display:inline-flex;align-items:center;justify-content:center;gap:10px;
-    font-family:var(--font-body);font-size:15px;font-weight:600;letter-spacing:-.01em;
-    padding:14px 24px;border-radius:999px;border:1px solid transparent;cursor:pointer;color:var(--ink);
-    transition:transform .2s var(--ease), box-shadow .2s var(--ease), filter .2s var(--ease), background .2s var(--ease);
-    white-space:nowrap;
-  }
+  /* ticker (recent agent work, lower-left) */
+  #ticker{position:fixed;left:var(--pad);bottom:18px;z-index:40;font-family:var(--mono);font-size:11px;letter-spacing:.06em;
+    color:var(--faint);max-width:min(70vw,520px);pointer-events:none;}
+  #ticker b{color:var(--aqua-deep);font-weight:400;}
+  #ticker .line{transition:opacity .6s var(--ease);}
+  @media (max-width:680px){#ticker{display:none;}}
+
+  /* ---------------- reel + frames ---------------- */
+  #reel{position:relative;z-index:10;}
+  .frame{position:relative;min-height:100svh;display:flex;padding:14vh var(--pad) 12vh;}
+  .frame.solo{min-height:82svh;align-items:center;justify-content:center;text-align:center;}
+  .place-bl{align-items:flex-end;justify-content:flex-start;}
+  .place-br{align-items:flex-end;justify-content:flex-end;text-align:right;}
+  .place-c{align-items:center;justify-content:center;text-align:center;}
+  .col{max-width:min(560px,80vw);}
+  .col.narrow{max-width:min(440px,82vw);}
+
+  /* a soft "glass lens" for contrast over bright water — cheap, no blur */
+  .lens{position:relative;}
+  .lens::before{content:"";position:absolute;inset:-26px -40px;z-index:-1;border-radius:40px;
+    background:radial-gradient(120% 130% at 50% 55%, rgba(4,26,36,.6), rgba(4,26,36,.26) 46%, transparent 74%);}
+  .place-br .lens::before{inset:-26px -40px -26px -28px;}
+
+  /* type */
+  .kicker{font-size:11.5px;font-weight:700;letter-spacing:var(--caps);text-transform:uppercase;color:var(--aqua);
+    display:inline-flex;align-items:center;gap:12px;}
+  .kicker::after{content:"";width:42px;height:1px;background:var(--aqua);opacity:.55;}
+  .place-br .kicker{flex-direction:row-reverse;}
+  .place-br .kicker::after{display:none;}
+  .place-br .kicker::before{content:"";width:42px;height:1px;background:var(--aqua);opacity:.55;}
+
+  h1.title{font-family:var(--sans);font-weight:800;font-size:clamp(3rem,11vw,8rem);line-height:.92;letter-spacing:-.035em;
+    margin:18px 0 0;text-shadow:0 2px 40px rgba(3,18,26,.55);}
+  h2.scene{font-family:var(--sans);font-weight:800;font-size:clamp(2.1rem,6vw,4.2rem);line-height:.98;letter-spacing:-.03em;margin:14px 0 0;text-shadow:0 2px 30px rgba(3,18,26,.5);}
+  .solo .big{font-family:var(--sans);font-weight:800;font-size:clamp(1.9rem,5.4vw,3.6rem);line-height:1.05;letter-spacing:-.03em;max-width:18ch;margin:0 auto;text-shadow:0 2px 30px rgba(3,18,26,.5);}
+  .serif{font-family:var(--serif);font-style:italic;color:var(--ink);opacity:.92;}
+  p.deck{font-family:var(--serif);font-style:italic;font-size:clamp(1.05rem,2.2vw,1.4rem);line-height:1.5;color:var(--ink);opacity:.9;margin:18px 0 0;max-width:42ch;text-shadow:0 1px 16px rgba(3,18,26,.5);}
+  .place-br p.deck{margin-left:auto;}
+
+  /* buttons */
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;font-family:var(--sans);font-size:15px;font-weight:600;
+    letter-spacing:-.01em;padding:14px 26px;border-radius:999px;border:1px solid transparent;cursor:pointer;color:var(--ink);
+    transition:transform .2s var(--ease),box-shadow .2s var(--ease),filter .2s var(--ease),background .2s var(--ease),border-color .2s var(--ease);white-space:nowrap;}
   .btn svg{flex:none;}
-  .btn-lg{padding:17px 28px;font-size:16px;}
-  .btn-sm{padding:11px 18px;font-size:14px;}
-  .btn-primary{background:var(--coral);color:#2a140b;box-shadow:0 10px 30px rgba(239,138,93,.32);border:none;}
-  .btn-primary:hover{transform:scale(1.035);filter:brightness(1.06);box-shadow:0 16px 40px rgba(239,138,93,.44);}
-  .btn-primary:active{transform:scale(.97);}
-  .btn.liquid-glass:hover{transform:translateY(-2px);}
-  @media (prefers-reduced-motion:reduce){.btn:hover,.btn:active{transform:none;}}
+  .btn-coral{background:var(--coral);color:#2a140b;box-shadow:0 12px 34px rgba(239,138,93,.34);}
+  .btn-coral:hover{transform:scale(1.035);filter:brightness(1.06);box-shadow:0 18px 44px rgba(239,138,93,.46);}
+  .btn-coral:active{transform:scale(.97);}
+  .btn-ghost{background:rgba(245,251,253,.07);border-color:rgba(245,251,253,.22);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);}
+  .btn-ghost:hover{background:rgba(245,251,253,.13);border-color:rgba(245,251,253,.4);}
+  .cta-row{display:flex;flex-wrap:wrap;gap:14px;margin-top:34px;}
+  .place-br .cta-row{justify-content:flex-end;}
 
-  /* ---------------- Nav ---------------- */
-  .nav{position:fixed;top:0;left:0;right:0;z-index:60;transition:background .3s,border-color .3s,box-shadow .3s;border-bottom:1px solid transparent;}
-  .nav.scrolled{background:var(--panel-strong);backdrop-filter:blur(16px);border-bottom-color:var(--line-soft);box-shadow:0 10px 30px rgba(0,0,0,.32);}
-  .nav-inner{display:flex;align-items:center;justify-content:space-between;gap:18px;padding:15px 28px;max-width:var(--maxw);margin:0 auto;}
-  .brand{display:flex;align-items:center;gap:11px;font-weight:800;font-size:21px;letter-spacing:-.01em;}
-  .brand svg{display:block;flex:none;}
-  .nav-center{display:flex;align-items:center;gap:32px;}
-  .nav-center a{font-size:14.5px;color:var(--dim);font-weight:500;letter-spacing:-.01em;transition:color .2s,opacity .2s;}
-  .nav-center a:hover{color:var(--ink);}
-  .nav-right{display:flex;align-items:center;gap:12px;}
-  .nav-pill{padding:11px 20px;border-radius:999px;font-weight:600;font-size:14.5px;color:var(--ink);transition:transform .2s var(--ease),box-shadow .2s var(--ease),filter .2s var(--ease),background .2s var(--ease);}
-  .nav-pill.primary{background:var(--coral);color:#2a140b;box-shadow:0 8px 22px rgba(239,138,93,.3);}
-  .nav-pill.primary:hover{transform:scale(1.04);filter:brightness(1.06);}
-  .nav-toggle{display:none;border-radius:12px;padding:9px;color:var(--ink);cursor:pointer;align-items:center;justify-content:center;}
+  .scroll-hint{position:absolute;left:50%;bottom:8vh;transform:translateX(-50%);font-family:var(--mono);font-size:10.5px;
+    letter-spacing:.34em;text-transform:uppercase;color:var(--faint);display:flex;flex-direction:column;align-items:center;gap:8px;}
+  .scroll-hint .ln{width:1px;height:34px;background:linear-gradient(180deg,var(--faint),transparent);animation:drip 2.4s var(--ease) infinite;}
+  @keyframes drip{0%{transform:scaleY(.2);transform-origin:top;opacity:.3}50%{transform:scaleY(1);opacity:1}100%{transform:scaleY(.2);transform-origin:bottom;opacity:.3}}
 
-  @media (max-width:920px){
-    .nav-center,.nav-right{display:none;}
-    .nav-toggle{display:inline-flex;}
-  }
+  /* Ask mock */
+  .glass{background:rgba(6,34,46,.4);-webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
+    border:1px solid rgba(245,251,253,.14);border-radius:18px;box-shadow:0 22px 60px rgba(2,14,20,.5),inset 0 1px 0 rgba(255,255,255,.08);}
+  .ask{margin-top:24px;max-width:440px;padding:16px 18px;}
+  .ask .bar{display:flex;align-items:center;gap:12px;}
+  .ask .spark{color:var(--coral);font-size:18px;flex:none;}
+  .ask .q{font-family:var(--sans);font-size:15.5px;color:var(--ink);min-height:1.3em;}
+  .ask .q .cur{display:inline-block;width:2px;height:1.05em;background:var(--aqua);vertical-align:-2px;margin-left:1px;animation:blink 1s steps(1) infinite;}
+  @keyframes blink{50%{opacity:0}}
+  .ask .ans{margin-top:0;max-height:0;opacity:0;overflow:hidden;border-top:1px solid transparent;
+    transition:max-height .6s var(--ease),opacity .5s var(--ease),margin-top .4s var(--ease),border-color .4s;}
+  .ask.answered .ans{max-height:240px;opacity:1;margin-top:14px;padding-top:14px;border-top-color:rgba(245,251,253,.12);}
+  .ask .ans p{margin:0;font-family:var(--serif);font-style:italic;font-size:14.5px;line-height:1.55;color:var(--ink);opacity:.94;}
+  .ask .think{display:none;gap:5px;align-items:center;height:0;}
+  .ask.thinking .think{display:flex;height:auto;margin-top:12px;}
+  .ask .think i{width:6px;height:6px;border-radius:50%;background:var(--aqua);opacity:.5;animation:bob 1s var(--ease) infinite;}
+  .ask .think i:nth-child(2){animation-delay:.15s}.ask .think i:nth-child(3){animation-delay:.3s}
+  @keyframes bob{0%,100%{transform:translateY(0);opacity:.4}50%{transform:translateY(-5px);opacity:1}}
 
-  /* ---------------- Mobile sheet ---------------- */
-  .sheet-backdrop{position:fixed;inset:0;z-index:70;background:rgba(5,30,40,.4);backdrop-filter:blur(5px);opacity:0;pointer-events:none;transition:opacity .4s var(--ease);}
-  .sheet-backdrop.open{opacity:1;pointer-events:auto;}
-  .sheet{position:fixed;top:0;right:0;z-index:80;width:min(88vw,360px);height:100dvh;background:var(--sheet);
-    box-shadow:-12px 0 48px rgba(3,20,28,.5);transform:translateX(100%);
-    transition:transform .45s var(--ease), visibility 0s linear .45s;visibility:hidden;
-    display:flex;flex-direction:column;padding:22px;}
-  .sheet.open{transform:translateX(0);visibility:visible;transition:transform .45s var(--ease), visibility 0s;}
-  .sheet-head{display:flex;align-items:center;justify-content:space-between;}
-  .sheet-close{border-radius:12px;padding:9px;color:var(--ink);cursor:pointer;display:inline-flex;}
-  .sheet-divider{height:1px;background:var(--line-soft);margin:20px 0 8px;}
-  .sheet-links{display:flex;flex-direction:column;}
-  .sheet-links a{font-size:19px;font-weight:600;padding:15px 4px;color:var(--ink);border-bottom:1px solid var(--line-soft);
-    opacity:0;transform:translateX(16px);transition:opacity .4s var(--ease),transform .4s var(--ease),color .2s;}
-  .sheet.open .sheet-links a{opacity:1;transform:none;}
-  .sheet-cta{margin-top:auto;display:flex;flex-direction:column;gap:12px;padding-top:18px;}
-  .sheet-cta .btn{width:100%;}
-  @media (prefers-reduced-motion:reduce){
-    .sheet,.sheet-backdrop,.sheet-links a{transition:none;}
-    .sheet-links a{opacity:1;transform:none;}
-  }
+  /* Ideas → angles */
+  .idea{margin-top:22px;max-width:440px;margin-left:auto;padding:16px 18px;}
+  .idea .seed{font-family:var(--serif);font-style:italic;font-size:16px;color:var(--ink);}
+  .angles{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px;}
+  .angle{padding:11px 13px;border-radius:12px;background:rgba(4,24,33,.5);border:1px solid rgba(245,251,253,.12);text-align:left;
+    opacity:0;transform:translateY(12px) scale(.97);}
+  .in .angle{opacity:1;transform:none;transition:opacity .5s var(--ease),transform .5s var(--ease);}
+  .in .angle:nth-child(1){transition-delay:.05s}.in .angle:nth-child(2){transition-delay:.15s}
+  .in .angle:nth-child(3){transition-delay:.25s}.in .angle:nth-child(4){transition-delay:.35s}
+  .angle .at{font-size:10px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--coral);}
+  .angle .av{font-size:12.5px;color:var(--dim);margin-top:4px;line-height:1.4;}
 
-  /* ---------------- Hero (cinematic, bottom-aligned) ---------------- */
-  .hero{position:relative;min-height:100vh;min-height:100dvh;overflow:hidden;}
-  .hero-stage{position:absolute;inset:0;z-index:0;background:#052b38 url("./assets/ocean-day.jpg") center/cover no-repeat;}
-  #ocean{position:absolute;inset:0;width:100%;height:100%;display:block;}
-  /* bottom blur — frost only, no dark gradient; fades out toward the middle */
-  .hero-blur{position:absolute;inset:0;z-index:1;pointer-events:none;
-    -webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);
-    -webkit-mask-image:linear-gradient(to top, #000 0%, transparent 45%);
-    mask-image:linear-gradient(to top, #000 0%, transparent 45%);}
-  .hero .wrap{position:relative;z-index:10;display:flex;flex-direction:column;justify-content:flex-end;
-    min-height:100vh;min-height:100dvh;padding-top:120px;padding-bottom:clamp(34px,6vh,76px);width:100%;}
-  .hero-grid{display:flex;flex-direction:column;align-items:flex-start;gap:30px;}
-  @media (min-width:768px){.hero-grid{flex-direction:row;align-items:flex-end;gap:40px;}}
-  .hero-inner{flex:1;max-width:680px;}
+  /* instrument row */
+  .instruments{display:flex;flex-wrap:wrap;justify-content:center;gap:0;margin-top:30px;max-width:980px;
+    border:1px solid rgba(245,251,253,.12);border-radius:18px;overflow:hidden;}
+  .inst{flex:1 1 150px;min-width:140px;padding:20px 18px;text-align:left;border-right:1px solid rgba(245,251,253,.1);
+    transition:background .25s var(--ease);}
+  .inst:last-child{border-right:none;}
+  .inst:hover{background:rgba(6,34,46,.4);}
+  .inst .il{font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:var(--aqua);display:flex;align-items:center;gap:8px;}
+  .inst .iv{font-size:13px;color:var(--dim);margin-top:8px;line-height:1.45;}
+  .inst .iv b{color:var(--ink);font-weight:600;}
+  @media (max-width:760px){.instruments{flex-direction:column;}.inst{border-right:none;border-bottom:1px solid rgba(245,251,253,.1);}.inst:last-child{border-bottom:none;}}
 
-  .meta-row{display:flex;flex-wrap:wrap;align-items:center;gap:12px 22px;margin-bottom:22px;font-size:13.5px;color:var(--ink);text-shadow:0 1px 10px rgba(0,0,0,.5);}
-  .meta-row .mi{display:inline-flex;align-items:center;gap:9px;}
-  .meta-row .mi svg{flex:none;opacity:.95;}
-  .meta-row .mi b{font-weight:600;}
+  /* tool dock pills (dusk) */
+  .dock{display:flex;flex-wrap:wrap;gap:10px;margin-top:24px;justify-content:center;}
+  .pill{font-family:var(--mono);font-size:12px;letter-spacing:.04em;padding:9px 15px;border-radius:999px;
+    background:rgba(6,34,46,.42);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);border:1px solid rgba(245,251,253,.14);color:var(--dim);}
+  .pill.live{color:var(--ink);border-color:rgba(125,219,230,.4);}
 
-  .hero h1{font-size:clamp(2.2rem,6vw,4.3rem);line-height:1.0;font-weight:900;letter-spacing:-.035em;margin:0 0 18px;text-shadow:0 2px 34px rgba(0,0,0,.42);}
-  .hero h1 .hi{display:inline-flex;vertical-align:middle;position:relative;top:-.06em;margin:0 .05em;color:var(--coral);filter:drop-shadow(0 2px 10px rgba(0,0,0,.4));}
-  .hero p.sub{font-size:clamp(1rem,2.1vw,1.2rem);color:var(--dim);margin:0 0 30px;max-width:560px;line-height:1.6;text-shadow:0 1px 14px rgba(0,0,0,.45);}
-  .hero-actions{display:flex;flex-wrap:wrap;gap:14px;}
-
-  .mood-nav{display:flex;flex-direction:column;align-items:flex-start;gap:12px;flex:none;}
-  @media (min-width:768px){.mood-nav{align-items:flex-end;text-align:right;}}
-  .mood-cap{font-size:11.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--faint);font-weight:700;}
-  .mood-cap b{color:var(--aqua);font-weight:700;}
-  .mood-btns{display:flex;gap:10px;}
-  .mood-hint{font-size:12px;color:var(--faint);letter-spacing:.02em;}
-
-  /* fade-up children inside a flex container keep their box while hidden */
-  .meta-row.fade-up,.hero h1.fade-up,.hero p.sub.fade-up,.hero-actions.fade-up{will-change:opacity,transform,filter;}
-
-  /* ---------------- Sections ---------------- */
-  section{position:relative;}
-  .section-pad{padding:104px 0;}
-  .section-head{max-width:720px;margin-bottom:54px;}
-  .section-head h2{font-size:clamp(2rem,4.4vw,3rem);font-weight:800;margin:16px 0 0;letter-spacing:-.025em;}
-  .section-head p{color:var(--dim);font-size:17px;margin:16px 0 0;}
-
-  .feature-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:20px;}
-  .card{background:var(--panel);backdrop-filter:blur(14px);border:1px solid var(--line);border-radius:20px;padding:28px;box-shadow:var(--shadow);transition:transform .25s var(--ease),border-color .25s;}
-  .card:hover{transform:translateY(-4px);border-color:rgba(255,255,255,.28);}
-  @media (prefers-reduced-motion:reduce){.card:hover{transform:none;}}
-  .card.span-3{grid-column:span 3;}
-  .card.span-2{grid-column:span 2;}
-  .card.showcase{grid-column:span 3;min-height:300px;display:flex;flex-direction:column;justify-content:flex-end;position:relative;overflow:hidden;padding:30px;}
-  .card.showcase.sea{background:linear-gradient(180deg, rgba(4,28,38,.16), rgba(4,28,38,.84)), url("./assets/ocean-dusk.jpg") center/cover;}
-  .card.showcase.radio{background:
-    radial-gradient(520px 320px at 80% 0%, rgba(31,182,166,.18), transparent 65%),
-    radial-gradient(420px 320px at 0% 100%, rgba(239,138,93,.16), transparent 60%),
-    var(--panel-strong);}
-  .card .ico{width:46px;height:46px;border-radius:13px;display:flex;align-items:center;justify-content:center;background:rgba(70,198,214,.12);border:1px solid rgba(70,198,214,.26);color:var(--aqua);margin-bottom:18px;}
-  .card.showcase .ico{margin-bottom:16px;background:rgba(4,28,38,.5);border-color:var(--line);color:var(--ink);}
-  .card h3{font-size:22px;font-weight:700;margin:0 0 9px;letter-spacing:-.02em;}
-  .card.showcase h3{font-size:27px;}
-  .card p{margin:0;color:var(--dim);font-size:15px;line-height:1.62;}
-  .card .feat-kicker{font-size:11.5px;letter-spacing:.2em;text-transform:uppercase;color:var(--aqua);font-weight:700;margin-bottom:10px;}
-  .card code{background:rgba(255,255,255,.1);border:1px solid var(--line-soft);border-radius:5px;padding:1px 6px;font-size:13px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;}
-
-  .radio-tags{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px;}
-  .tag{font-size:12.5px;padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:rgba(4,28,38,.4);color:var(--dim);}
-  .tag.teal{border-color:rgba(31,182,166,.4);color:var(--codex);}
-  .tag.coral{border-color:rgba(239,138,93,.4);color:var(--coral);}
-
-  @media (max-width:980px){.feature-grid{grid-template-columns:repeat(2,1fr);}.card.span-3,.card.span-2,.card.showcase{grid-column:span 1;}.card.showcase{min-height:240px;}}
-  @media (max-width:560px){.feature-grid{grid-template-columns:1fr;}}
-
-  .steps{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;}
-  .step{background:var(--panel);backdrop-filter:blur(14px);border:1px solid var(--line);border-radius:20px;padding:30px;box-shadow:var(--shadow);}
-  .step .num{font-weight:800;font-size:34px;color:var(--coral);line-height:1;display:flex;align-items:baseline;gap:12px;margin-bottom:16px;letter-spacing:-.02em;}
-  .step .num small{font-size:12px;letter-spacing:.2em;text-transform:uppercase;color:var(--faint);font-weight:700;}
-  .step h3{font-size:20px;font-weight:700;margin:0 0 8px;letter-spacing:-.01em;}
-  .step p{color:var(--dim);font-size:15px;margin:0;}
-  .step code{background:rgba(255,255,255,.1);border:1px solid var(--line-soft);border-radius:5px;padding:1px 6px;font-size:13px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;}
-  @media (max-width:820px){.steps{grid-template-columns:1fr;}}
-
-  .band{background:
-    radial-gradient(700px 300px at 18% 0%, rgba(239,138,93,.12), transparent 60%),
-    radial-gradient(700px 300px at 90% 100%, rgba(31,182,166,.14), transparent 60%),
-    var(--panel);border-top:1px solid var(--line-soft);border-bottom:1px solid var(--line-soft);backdrop-filter:blur(10px);}
-  .band-inner{display:flex;gap:48px;align-items:center;flex-wrap:wrap;justify-content:space-between;}
-  .band-text{max-width:640px;}
-  .band-text h2{font-size:clamp(1.7rem,3.6vw,2.5rem);font-weight:800;margin:16px 0 0;letter-spacing:-.025em;}
-  .band-text p{color:var(--dim);font-size:16.5px;margin:16px 0 0;}
-  .band-chips{display:flex;gap:14px;flex-wrap:wrap;}
-  .chip{display:flex;align-items:center;gap:11px;background:rgba(4,28,38,.5);border:1px solid var(--line);border-radius:14px;padding:16px 20px;font-weight:600;font-size:15px;}
-  .chip .swatch{width:11px;height:11px;border-radius:50%;}
-  .chip.claude .swatch{background:var(--coral);box-shadow:0 0 12px rgba(239,138,93,.6);}
-  .chip.codex .swatch{background:var(--codex);box-shadow:0 0 12px rgba(31,182,166,.6);}
-
-  /* ---------------- Download (dual OS) ---------------- */
-  .price-card{max-width:680px;margin:0 auto;text-align:center;background:var(--panel-strong);backdrop-filter:blur(16px);border:1px solid rgba(70,198,214,.3);border-radius:24px;padding:44px 40px;box-shadow:0 24px 60px rgba(0,0,0,.5),0 0 0 1px rgba(70,198,214,.07) inset;position:relative;overflow:hidden;}
-  .price-card::before{content:"";position:absolute;top:-40%;left:50%;transform:translateX(-50%);width:120%;height:60%;background:radial-gradient(closest-side,rgba(70,198,214,.18),transparent);pointer-events:none;}
-  .price-once{font-size:13px;letter-spacing:.22em;text-transform:uppercase;color:var(--aqua);font-weight:700;}
-  .price-amount{font-weight:900;font-size:72px;line-height:1;margin:14px 0 4px;color:var(--ink);letter-spacing:-.04em;}
-  .price-sub{color:var(--dim);font-size:15px;margin:0 0 26px;}
-  .price-list{list-style:none;padding:0;margin:0 auto 30px;text-align:left;display:inline-block;}
-  .price-list li{display:flex;align-items:flex-start;gap:12px;padding:8px 0;color:var(--ink);font-size:15.5px;}
-  .price-list li svg{flex:none;color:var(--aqua);margin-top:2px;}
-
-  .dl-grid{display:flex;gap:16px;justify-content:center;flex-wrap:wrap;position:relative;z-index:1;}
-  .dl-btn{display:flex;align-items:center;gap:14px;text-align:left;min-width:248px;padding:16px 22px;border-radius:16px;cursor:pointer;
-    border:1px solid var(--line);background:rgba(243,251,253,.06);color:var(--ink);
+  /* end card */
+  .endcard{text-align:center;max-width:760px;margin:0 auto;}
+  .endcard .wordmark{font-family:var(--sans);font-weight:800;font-size:clamp(3.4rem,13vw,9rem);letter-spacing:-.05em;line-height:.9;
+    text-shadow:0 2px 50px rgba(3,18,26,.6);}
+  .endcard .tag{font-family:var(--serif);font-style:italic;font-size:clamp(1.2rem,3vw,1.7rem);color:var(--ink);opacity:.92;margin-top:10px;}
+  .dl-row{display:flex;gap:14px;justify-content:center;flex-wrap:wrap;margin-top:38px;}
+  .dl{display:flex;align-items:center;gap:13px;text-align:left;min-width:240px;padding:15px 22px;border-radius:16px;cursor:pointer;
+    border:1px solid rgba(245,251,253,.18);background:rgba(6,34,46,.42);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);color:var(--ink);
     transition:transform .2s var(--ease),border-color .2s,background .2s,box-shadow .2s,filter .2s;}
-  .dl-btn:hover{transform:translateY(-3px);border-color:rgba(255,255,255,.34);background:rgba(243,251,253,.1);}
-  .dl-btn .os-ico{flex:none;display:flex;align-items:center;justify-content:center;width:34px;height:34px;color:var(--ink);}
-  .dl-btn .os-meta{display:flex;flex-direction:column;line-height:1.25;}
-  .dl-btn .os-name{font-weight:700;font-size:16px;letter-spacing:-.01em;}
-  .dl-btn .os-sub{font-size:12.5px;color:var(--dim);}
-  .dl-btn.detected{background:var(--coral);color:#2a140b;border-color:transparent;box-shadow:0 12px 32px rgba(239,138,93,.34);}
-  .dl-btn.detected .os-ico{color:#2a140b;}
-  .dl-btn.detected .os-sub{color:rgba(42,20,11,.74);}
-  .dl-btn.detected:hover{transform:scale(1.035) translateY(-1px);filter:brightness(1.05);}
-  .dl-note{margin:20px 0 0;color:var(--faint);font-size:13px;letter-spacing:.2px;}
-  @media (max-width:560px){.dl-btn{min-width:0;width:100%;}}
+  .dl:hover{transform:translateY(-3px);border-color:rgba(245,251,253,.4);}
+  .dl .oi{flex:none;width:30px;height:30px;display:flex;align-items:center;justify-content:center;}
+  .dl .om{display:flex;flex-direction:column;line-height:1.25;}
+  .dl .on{font-weight:700;font-size:15.5px;}
+  .dl .os{font-family:var(--mono);font-size:11px;color:var(--dim);letter-spacing:.04em;}
+  .dl.detected{background:var(--coral);color:#2a140b;border-color:transparent;box-shadow:0 14px 38px rgba(239,138,93,.4);}
+  .dl.detected .os{color:rgba(42,20,11,.75);}
+  .dl.detected:hover{transform:scale(1.035) translateY(-1px);filter:brightness(1.05);}
+  .finered{margin-top:30px;font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--faint);
+    display:flex;flex-wrap:wrap;gap:8px 14px;justify-content:center;}
+  .finered b{color:var(--aqua-deep);font-weight:400;}
 
-  /* ---------------- FAQ ---------------- */
-  .faq{max-width:780px;margin:0 auto;}
-  .faq details{background:var(--panel);backdrop-filter:blur(12px);border:1px solid var(--line);border-radius:16px;margin-bottom:14px;overflow:hidden;}
-  .faq summary{list-style:none;cursor:pointer;padding:22px 24px;display:flex;align-items:center;justify-content:space-between;gap:16px;font-size:17px;font-weight:600;color:var(--ink);letter-spacing:-.01em;}
-  .faq summary::-webkit-details-marker{display:none;}
-  .faq summary .plus{flex:none;transition:transform .25s var(--ease);color:var(--aqua);}
-  .faq details[open] summary .plus{transform:rotate(45deg);}
-  .faq .answer{padding:0 24px 22px;color:var(--dim);font-size:15.5px;line-height:1.66;}
-  .faq .answer code{background:rgba(255,255,255,.1);border:1px solid var(--line-soft);border-radius:5px;padding:1px 6px;font-size:13.5px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;}
+  /* colophon */
+  .colophon{position:relative;z-index:10;padding:40px var(--pad) 56px;display:flex;flex-wrap:wrap;gap:10px 22px;align-items:center;justify-content:center;
+    font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--faint);text-align:center;background:linear-gradient(180deg,transparent,rgba(3,20,28,.7));}
+  .colophon a:hover{color:var(--ink);}
 
-  /* ---------------- Footer ---------------- */
-  footer{border-top:1px solid var(--line-soft);background:rgba(4,28,38,.6);backdrop-filter:blur(10px);}
-  .foot-inner{padding:48px 0 40px;display:flex;flex-direction:column;gap:18px;align-items:flex-start;}
-  .foot-brand{display:flex;align-items:center;gap:11px;font-weight:800;font-size:20px;}
-  .foot-tag{color:var(--dim);font-size:15px;max-width:560px;margin:0;}
-  .foot-meta{display:flex;flex-wrap:wrap;gap:8px 18px;color:var(--faint);font-size:13px;align-items:center;}
-  .foot-meta .sep{opacity:.4;}
+  /* reveal (JS-gated so no-JS still shows everything) */
+  .js .reveal{opacity:0;transform:translateY(30px);filter:blur(16px);}
+  .js .reveal.in{opacity:1;transform:none;filter:blur(0);transition:opacity 1s var(--ease),transform 1s var(--ease),filter 1s var(--ease);}
+  .js .reveal[data-d="1"].in{transition-delay:.12s}
+  .js .reveal[data-d="2"].in{transition-delay:.24s}
+  .js .reveal[data-d="3"].in{transition-delay:.36s}
+
+  @media (prefers-reduced-motion:reduce){
+    .js .reveal,.js .reveal.in{opacity:1 !important;transform:none !important;filter:none !important;transition:none !important;}
+    .angle{opacity:1 !important;transform:none !important;}
+    .scroll-hint .ln,#wake .fill{animation:none;}
+    #sea-day,#sea-dusk{transition:none;}
+  }
 </style>
-<noscript><style>.fade-up{opacity:1 !important;animation:none !important;transform:none !important;filter:none !important;}</style></noscript>
+<noscript><style>.reveal{opacity:1 !important;transform:none !important;filter:none !important;}</style></noscript>
 </head>
 <body>
 
-<!-- ===================== NAV ===================== -->
-<nav class="nav" id="nav">
-  <div class="nav-inner">
-    <a class="brand fade-up" href="#top" aria-label="Oasis home" style="animation-delay:0ms">
-      <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#ef8a5d" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="M4.5 15h15l-2.6 4.2H7.1z"/><path d="M12 3.4v11.6M12 6l6.4 9H12z" stroke="#f3fbfd"/></svg>
-      Oasis
-    </a>
-    <div class="nav-center">
-      <a class="fade-up" href="#features" style="animation-delay:100ms">Features</a>
-      <a class="fade-up" href="#how" style="animation-delay:150ms">How it works</a>
-      <a class="fade-up" href="#download" style="animation-delay:200ms">Download</a>
-      <a class="fade-up" href="#faq" style="animation-delay:250ms">FAQ</a>
-    </div>
-    <div class="nav-right">
-      <a class="nav-pill primary fade-up" href="#download" style="animation-delay:350ms">Get Oasis — free</a>
-      <a class="nav-pill liquid-glass fade-up" href="#how" style="animation-delay:400ms"><span>How it works</span></a>
-    </div>
-    <button class="nav-toggle liquid-glass fade-up" id="navToggle" aria-label="Open menu" aria-expanded="false" aria-controls="sheet" style="animation-delay:350ms">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
-    </button>
-  </div>
-</nav>
+<!-- ===================== THE SEA (fixed film plate) ===================== -->
+<div id="sea" aria-hidden="true">
+  <img id="sea-poster" class="plate" src="./assets/ocean-day.jpg" alt="">
+  <video id="sea-day" class="plate" autoplay muted loop playsinline preload="auto" poster="./assets/ocean-day.jpg">
+    <source src="./assets/ocean-day.mp4" type="video/mp4">
+  </video>
+  <video id="sea-dusk" class="plate" muted loop playsinline preload="none" poster="./assets/ocean-dusk.jpg">
+    <source src="./assets/ocean-dusk.mp4" type="video/mp4">
+  </video>
+  <div id="sea-scrim"></div>
+</div>
 
-<!-- ===================== MOBILE SHEET ===================== -->
-<div class="sheet-backdrop" id="sheetBackdrop" aria-hidden="true"></div>
-<aside class="sheet" id="sheet" role="dialog" aria-modal="true" aria-label="Menu" inert>
-  <div class="sheet-head">
-    <a class="brand" href="#top">
-      <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#ef8a5d" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="M4.5 15h15l-2.6 4.2H7.1z"/><path d="M12 3.4v11.6M12 6l6.4 9H12z" stroke="#f3fbfd"/></svg>
-      Oasis
-    </a>
-    <button class="sheet-close liquid-glass" id="sheetClose" aria-label="Close menu">
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
-    </button>
-  </div>
-  <div class="sheet-divider"></div>
-  <nav class="sheet-links" id="sheetLinks">
-    <a href="#features">Features</a>
-    <a href="#how">How it works</a>
-    <a href="#download">Download</a>
-    <a href="#faq">FAQ</a>
-  </nav>
-  <div class="sheet-cta">
-    <a class="btn btn-primary" href="#download">Get Oasis — free</a>
-    <a class="btn liquid-glass" href="#features"><span>See what's inside</span></a>
-  </div>
-</aside>
+<!-- ===================== WAKE-LINE (the only nav) ===================== -->
+<div id="wake" aria-hidden="true">
+  <div class="track"></div>
+  <div class="fill" id="wakeFill"></div>
+  <svg class="boat" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"><path d="M4.5 15h15l-2.6 4.2H7.1z"/><path d="M12 3.4v11.6M12 6l6.4 9H12z"/></svg>
+</div>
 
-<!-- ===================== HERO ===================== -->
-<header class="hero" id="top">
-  <div class="hero-stage" aria-hidden="true"><canvas id="ocean"></canvas></div>
-  <div class="hero-blur" aria-hidden="true"></div>
-  <div class="wrap">
-    <div class="hero-grid">
-      <div class="hero-inner">
-        <div class="meta-row fade-up" style="animation-delay:300ms">
-          <span class="mi"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2.4l2.9 5.9 6.5.95-4.7 4.58 1.1 6.48L12 17.3l-5.8 3.05 1.1-6.48L2.6 9.25l6.5-.95z"/></svg> <b>Free, forever</b></span>
-          <span class="mi"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg> 100% local</span>
-          <span class="mi"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg> Mac &amp; Windows</span>
-        </div>
-        <h1 class="fade-up" style="animation-delay:400ms">
-          <span class="hi" aria-hidden="true"><svg width="0.8em" height="0.8em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6c.9.6 1.6 1 2.8 1 2.2 0 2.2-1.6 4.4-1.6S11.4 7 13.6 7 15.8 5.4 18 5.4c1.2 0 1.9.4 2.8 1"/><path d="M2 12c.9.6 1.6 1 2.8 1 2.2 0 2.2-1.6 4.4-1.6S11.4 13 13.6 13 15.8 11.4 18 11.4c1.2 0 1.9.4 2.8 1"/><path d="M2 18c.9.6 1.6 1 2.8 1 2.2 0 2.2-1.6 4.4-1.6S11.4 19 13.6 19 15.8 17.4 18 17.4c1.2 0 1.9.4 2.8 1"/></svg></span>
-          A calm home base for people who build
-          <span class="hi" aria-hidden="true"><svg width="0.8em" height="0.8em" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.9L19 9.6l-5.1 1.7L12 16l-1.9-4.7L5 9.6l5.1-1.7z"/><path d="M19 14l.8 2.2L22 17l-2.2.8L19 20l-.8-2.2L16 17l2.2-.8z"/></svg></span>
-          with AI
-        </h1>
-        <p class="sub fade-up" style="animation-delay:500ms">Ask anything, develop an idea into angles, track your day, and launch your projects — all over a living sea you steer with your cursor. It runs on your machine and nowhere else.</p>
-        <div class="hero-actions">
-          <a class="btn btn-primary btn-lg fade-up" href="#download" style="animation-delay:600ms">
-            Download — it's free
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 12 5 5 5-5"/><path d="M5 21h14"/></svg>
-          </a>
-          <a class="btn btn-lg liquid-glass fade-up" href="#features" style="animation-delay:700ms"><span>See what's inside</span></a>
-        </div>
-      </div>
-
-      <div class="mood-nav">
-        <div class="mood-cap fade-up" style="animation-delay:700ms">Scene · <b id="moodLabel">Day</b></div>
-        <div class="mood-btns">
-          <button type="button" class="btn btn-sm liquid-glass fade-up" id="moodPrev" aria-label="Previous scene" style="animation-delay:800ms">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg><span>Prev</span>
-          </button>
-          <button type="button" class="btn btn-sm liquid-glass fade-up" id="moodNext" aria-label="Next scene" style="animation-delay:900ms">
-            <span>Next</span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
-          </button>
-        </div>
-        <div class="mood-hint fade-up" style="animation-delay:950ms">Move your cursor — steer the boat &amp; stir the sea</div>
-      </div>
-    </div>
+<!-- ===================== PERSISTENT CHROME ===================== -->
+<header class="chrome top">
+  <a class="mark" href="#top" aria-label="Oasis">
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#ef8a5d" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="M4.5 15h15l-2.6 4.2H7.1z"/><path d="M12 3.4v11.6M12 6l6.4 9H12z" stroke="#f5fbfd"/></svg>
+    Oasis
+  </a>
+  <div class="meta">
+    <span class="hidelet">Local</span><span class="dot hidelet"></span>
+    <span class="hidelet">Private</span><span class="dot hidelet"></span>
+    <span class="hidelet">Free</span><span class="dot hidelet"></span>
+    <span id="clock">—</span>
   </div>
 </header>
 
-<!-- ===================== FEATURES ===================== -->
-<section class="section-pad" id="features">
-  <div class="wrap">
-    <div class="section-head fade-up">
-      <span class="label">What lives in Oasis</span>
-      <h2>Everything you reach for, in one quiet window.</h2>
-      <p>One calm surface on localhost — no tabs to hunt through, no dashboard to log into. Just the tools you actually use, running on your machine.</p>
-    </div>
+<div id="ticker" aria-hidden="true"><span class="line">&nbsp;</span></div>
 
-    <div class="feature-grid">
+<!-- ===================== THE REEL ===================== -->
+<main id="reel">
 
-      <article class="card showcase sea fade-up">
-        <div class="ico" aria-hidden="true">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 14c1.5 0 1.5-1.4 3-1.4S7.5 14 9 14s1.5-1.4 3-1.4S13.5 14 15 14s1.5-1.4 3-1.4S19.5 14 21 14"/><path d="M3 18c1.5 0 1.5-1.4 3-1.4S7.5 18 9 18s1.5-1.4 3-1.4S13.5 18 15 18s1.5-1.4 3-1.4S19.5 18 21 18"/><path d="M16.5 7.5 12 9.5 7.5 7.5 12 5.5z"/></svg>
-        </div>
-        <div class="feat-kicker">The water</div>
-        <h3>A living backdrop you can touch.</h3>
-        <p>An animated, hand-drawn sea sits behind everything — waves that ripple toward your cursor and a little boat you steer as you move. Four scenes — dawn, day, dusk, night — follow your clock, or flip them yourself. Dark by design, so text always reads.</p>
-      </article>
-
-      <article class="card span-3 fade-up">
-        <div class="ico" aria-hidden="true">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l4.5 4.5"/></svg>
-        </div>
-        <h3>Ask</h3>
-        <p>The hero search bar runs through your own local <code>claude</code> CLI. Ask a question, work a problem, or capture a thought — then turn any answer straight into a task, an idea, or a journal note. Nothing leaves your machine except the call you already make to Claude.</p>
-      </article>
-
-      <article class="card span-3 fade-up">
-        <div class="ico" aria-hidden="true">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.6L18 9l-4.2 1.4L12 15l-1.8-4.6L6 9l4.2-1.4z"/><path d="M19 14l.9 2.3L22 17l-2.1.7L19 20l-.9-2.3L16 17l2.1-.7z"/></svg>
-        </div>
-        <h3>Ideas you can develop</h3>
-        <p>Catch an idea in a line. Hit develop and Oasis opens it into four angles — the <strong>MVP cut</strong>, the <strong>wild version</strong>, the <strong>money angle</strong>, and the <strong>first build step</strong> — generated by your local Claude. Pin the keepers; turn any angle into a task.</p>
-      </article>
-
-      <article class="card span-2 fade-up">
-        <div class="ico" aria-hidden="true">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6l1 1 1.5-2M4 12l1 1 1.5-2"/><circle cx="4.8" cy="18" r="1.2"/></svg>
-        </div>
-        <h3>Today</h3>
-        <p>A drag-to-reorder task list that stays out of the way. Finished items quietly sink to the bottom.</p>
-      </article>
-
-      <article class="card span-2 fade-up">
-        <div class="ico" aria-hidden="true">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 5c-8 0-13 4-14 13l9-9M16 5l-3 3M9.5 18H5"/></svg>
-        </div>
-        <h3>Journal</h3>
-        <p>A few lines and a mood, whenever you need to think out loud. A seven-day pulse shows how the week has felt.</p>
-      </article>
-
-      <article class="card span-2 fade-up">
-        <div class="ico" aria-hidden="true">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2.2"/><path d="M3 17l5-4 3 2 4-3 6 5"/></svg>
-        </div>
-        <h3>Gallery</h3>
-        <p>An auto-updating wall of the images you generate — it watches your Codex output folder — with a lightbox, copy-path, and reveal-in-folder. Paste a URL to keep any image.</p>
-      </article>
-
-      <article class="card showcase radio fade-up">
-        <div class="ico" aria-hidden="true">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 17V5l10-2v12"/><circle cx="6.5" cy="17.5" r="2.5"/><circle cx="16.5" cy="15.5" r="2.5"/></svg>
-        </div>
-        <div class="feat-kicker">Music</div>
-        <h3>Score the work, your way.</h3>
-        <p>Lo-Fi for heads-down beats. Ambient and downtempo for deep focus. Or Spotify — paste any link, or connect your own account and play your playlists.</p>
-        <div class="radio-tags">
-          <span class="tag">Lo-Fi</span>
-          <span class="tag coral">Ambient</span>
-          <span class="tag teal">Spotify</span>
-        </div>
-      </article>
-
-      <article class="card span-3 fade-up">
-        <div class="ico" aria-hidden="true">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M2.5 12h2M19.5 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/></svg>
-        </div>
-        <h3>Daily briefing</h3>
-        <p>Once a day, one warm, grounding sentence about how your day is going — drawn from your tasks, journal and mood — with a quiet line of stats. A gentle check-in, not a productivity scoreboard.</p>
-      </article>
-
-      <article class="card span-3 fade-up">
-        <div class="ico" aria-hidden="true">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="7" height="7" rx="1.4"/><rect x="14" y="4" width="7" height="7" rx="1.4"/><rect x="3" y="14" width="7" height="7" rx="1.4"/><path d="M17.5 14v7M14 17.5h7"/></svg>
-        </div>
-        <h3>Tool dock</h3>
-        <p>Oasis auto-discovers the projects in your build folder — anything with a <code>Launch</code> script, a <code>.command</code>, or an <code>npm run dev</code> — and gives you one-click launch on Mac or Windows. No more digging through directories to start what you were working on.</p>
-      </article>
-
-      <article class="card span-2 fade-up">
-        <div class="ico" aria-hidden="true">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h4l2 6 4-14 2 8h6"/></svg>
-        </div>
-        <h3>Recent agent work</h3>
-        <p>A quiet ticker of your latest Claude Code and Codex sessions. Click to see them all and pick up exactly where you left off.</p>
-      </article>
-
-      <article class="card span-2 fade-up">
-        <div class="ico" aria-hidden="true">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M9 6.5A2.5 2.5 0 1 0 6.5 9H9zm0 0v9m0-9h6m-6 9A2.5 2.5 0 1 1 6.5 15H9zm6-9A2.5 2.5 0 1 1 17.5 9H15zm0 0v9m0 0h-6m6 0a2.5 2.5 0 1 0 2.5-2.5H15z"/></svg>
-        </div>
-        <h3>Palette &amp; focus timer</h3>
-        <p>Hit <code>Ctrl/⌘ K</code> to run anything from one box. Start a 25- or 50-minute focus session, set the scene, or jump to any tab.</p>
-      </article>
-
-      <article class="card span-2 fade-up">
-        <div class="ico" aria-hidden="true">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg>
-        </div>
-        <h3>Private and light</h3>
-        <p>Zero npm dependencies, no account, no telemetry. Oasis runs on Node, opens in its own window, and keeps every byte of your data on your machine.</p>
-      </article>
-
-    </div>
-  </div>
-</section>
-
-<!-- ===================== HOW IT WORKS ===================== -->
-<section class="section-pad" id="how">
-  <div class="wrap">
-    <div class="section-head fade-up">
-      <span class="label">How it works</span>
-      <h2>From download to your sea in about a minute.</h2>
-    </div>
-    <div class="steps">
-      <div class="step fade-up">
-        <div class="num">01 <small>Download &amp; unzip</small></div>
-        <h3>Download and unzip</h3>
-        <p>One small, free download for your platform — Mac or Windows. Unzip it anywhere — no installer, no account, no key.</p>
-      </div>
-      <div class="step fade-up">
-        <div class="num">02 <small>Run setup</small></div>
-        <h3>Run the setup launcher</h3>
-        <p>Double-click <code>Setup Oasis.command</code> on Mac or <code>Setup Oasis.bat</code> on Windows. It checks for Node.js (free), drops a shortcut, and opens Oasis. A one-minute wizard captures your name, projects folder, sound and scene.</p>
-      </div>
-      <div class="step fade-up">
-        <div class="num">03 <small>Build</small></div>
-        <h3>Work over the water</h3>
-        <p>Open Oasis any time from its shortcut. Ask, develop an idea, launch a project, score the session — all in one calm window.</p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ===================== TOOLCHAIN BAND ===================== -->
-<section class="band" id="toolchain">
-  <div class="wrap section-pad">
-    <div class="band-inner">
-      <div class="band-text fade-up">
-        <span class="label">Built for your toolchain</span>
-        <h2>Made for the way you already build.</h2>
-        <p>Oasis is for people who already work in Claude Code and Codex — on Mac or Windows. It lights up the tools you have — answering through your local Claude CLI, developing ideas, watching your Codex images, surfacing your recent sessions — and still works on its own when they're not around.</p>
-      </div>
-      <div class="band-chips fade-up">
-        <div class="chip claude"><span class="swatch"></span>Claude Code</div>
-        <div class="chip codex"><span class="swatch"></span>Codex</div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ===================== DOWNLOAD ===================== -->
-<section class="section-pad" id="download">
-  <div class="wrap">
-    <div class="section-head fade-up" style="text-align:center;max-width:640px;margin-left:auto;margin-right:auto;">
-      <span class="label" style="justify-content:center;">Download</span>
-      <h2>Free. Yours to keep.</h2>
-      <p>No price, no subscription, no account. Pick your platform, run it on your machine, and it's yours.</p>
-    </div>
-
-    <div class="price-card fade-up">
-      <div class="price-once">One download</div>
-      <div class="price-amount">Free</div>
-      <p class="price-sub">No account. No telemetry. No catch. Mac &amp; Windows.</p>
-      <ul class="price-list">
-        <li><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg> Runs entirely on your machine</li>
-        <li><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg> Zero npm dependencies</li>
-        <li><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg> One-minute setup wizard</li>
-        <li><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg> Claude Code + Codex friendly</li>
-        <li><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg> Free updates, no strings</li>
-      </ul>
-
-      <div class="dl-grid">
-        <a class="dl-btn" id="dlMac" href="./download/Oasis-macOS.zip" download>
-          <span class="os-ico" aria-hidden="true">
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor"><path d="M16.36 12.78c-.02-2.1 1.72-3.11 1.8-3.16-.98-1.44-2.51-1.63-3.05-1.65-1.3-.13-2.54.76-3.2.76-.66 0-1.68-.74-2.76-.72-1.42.02-2.73.83-3.46 2.1-1.48 2.56-.38 6.35 1.06 8.43.7 1.02 1.54 2.16 2.64 2.12 1.06-.04 1.46-.68 2.74-.68 1.28 0 1.64.68 2.76.66 1.14-.02 1.86-1.04 2.56-2.06.81-1.18 1.14-2.33 1.16-2.39-.03-.01-2.22-.85-2.24-3.38zM14.3 6.6c.58-.71.98-1.69.87-2.67-.84.03-1.86.56-2.46 1.26-.54.62-1.01 1.62-.88 2.57.94.07 1.89-.47 2.47-1.16z"/></svg>
-          </span>
-          <span class="os-meta">
-            <span class="os-name">Download for macOS</span>
-            <span class="os-sub">Oasis-macOS.zip · Apple silicon &amp; Intel</span>
-          </span>
+  <!-- 00 · cold open -->
+  <section class="frame place-bl" id="top">
+    <div class="col lens">
+      <span class="kicker reveal">A private home base · Mac &amp; Windows</span>
+      <h1 class="title reveal" data-d="1">A calm place<br>to build.</h1>
+      <p class="deck reveal" data-d="2">A private home base that floats over the sea — for people who make things with Claude&nbsp;Code and Codex. It runs on your machine, and nowhere else.</p>
+      <div class="cta-row reveal" data-d="3">
+        <a class="btn btn-coral" href="#download">
+          Download — free
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 12 5 5 5-5"/><path d="M5 21h14"/></svg>
         </a>
-        <a class="dl-btn" id="dlWin" href="./download/Oasis-Windows.zip" download>
-          <span class="os-ico" aria-hidden="true">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M3 5.4l7.6-1.04v7.16H3zM11.4 4.25 21 2.9v8.62h-9.6zM3 12.48h7.6v7.16L3 18.6zM11.4 12.48H21v8.62l-9.6-1.35z"/></svg>
-          </span>
-          <span class="os-meta">
-            <span class="os-name">Download for Windows</span>
-            <span class="os-sub">Oasis-Windows.zip · Windows 10 / 11</span>
-          </span>
+        <a class="btn btn-ghost" href="#ch1">see inside ↓</a>
+      </div>
+    </div>
+    <div class="scroll-hint" aria-hidden="true"><span>scroll</span><span class="ln"></span></div>
+  </section>
+
+  <!-- 01–03 · the credit-roll manifesto -->
+  <section class="frame solo"><div class="lens"><p class="big reveal serif">Nothing is uploaded. No account, no cloud.</p></div></section>
+  <section class="frame solo"><div class="lens"><p class="big reveal serif">It runs on your machine — and answers to you.</p></div></section>
+  <section class="frame solo"><div class="lens"><p class="big reveal serif">Just you, your tools, and a lot of open water.</p></div></section>
+
+  <!-- 04 · CHAPTER ONE — Ask -->
+  <section class="frame place-bl" id="ch1">
+    <div class="col lens">
+      <span class="kicker reveal">Chapter One</span>
+      <h2 class="scene reveal" data-d="1">Ask the water.</h2>
+      <p class="deck reveal" data-d="2">Type a question. Oasis runs your own local <span class="serif">claude</span> and answers in place — no tab, no browser, no leaving the calm.</p>
+      <div class="ask glass reveal" data-d="3" id="ask" aria-hidden="true">
+        <div class="bar"><span class="spark">✦</span><span class="q" id="askQ"></span></div>
+        <div class="think"><i></i><i></i><i></i></div>
+        <div class="ans"><p>Build a single-file particle field: 10k points in a compute shader, your cursor as the attractor. One HTML file, zero deps — you'll meet buffers, bind groups, and the render loop in an afternoon.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 05 · CHAPTER TWO — Ideas → angles -->
+  <section class="frame place-br" id="ch2">
+    <div class="col lens">
+      <span class="kicker reveal">Chapter Two</span>
+      <h2 class="scene reveal" data-d="1">Develop the idea.</h2>
+      <p class="deck reveal" data-d="2">Catch an idea as it drifts past. Ask Oasis to open it into four angles — the small cut, the wild one, the money, the first move.</p>
+      <div class="idea glass reveal" data-d="3" aria-hidden="true">
+        <div class="seed">“A tide-clock that turns my week into one calm glance.”</div>
+        <div class="angles">
+          <div class="angle"><div class="at">MVP cut</div><div class="av">One canvas ring, 7 day-segments, filled by tasks done. Ship today.</div></div>
+          <div class="angle"><div class="at">Wild version</div><div class="av">It breathes with your calendar and recolors by mood.</div></div>
+          <div class="angle"><div class="at">Money angle</div><div class="av">Sell the menubar build; the web one stays free.</div></div>
+          <div class="angle"><div class="at">First step</div><div class="av">Draw the ring and 7 segments from a hardcoded array.</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 06 · CHAPTER THREE — the day, gathered -->
+  <section class="frame place-c" id="ch3">
+    <div class="col" style="max-width:1000px">
+      <span class="kicker reveal" style="justify-content:center">Chapter Three</span>
+      <h2 class="scene reveal" data-d="1">Your day, on deck.</h2>
+      <p class="deck reveal" data-d="2" style="margin-left:auto;margin-right:auto;text-align:center">Three tasks done, the harbor's quiet — a good day to ship the small thing. <span style="opacity:.6">— your daily briefing, written by your own Claude.</span></p>
+      <div class="instruments reveal glass" data-d="3">
+        <div class="inst"><div class="il"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6h11M9 12h11M9 18h11"/><path d="M4 6l1 1 1.5-2M4 12l1 1 1.5-2"/></svg>Today</div><div class="iv"><b>3 left</b> · 2 done, drag to sort</div></div>
+        <div class="inst"><div class="il"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 5c-8 0-13 4-14 13l9-9"/></svg>Journal</div><div class="iv">a line &amp; a mood · <b>calm</b></div></div>
+        <div class="inst"><div class="il"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M3 17l5-4 4 3 3-2 6 4"/></svg>Gallery</div><div class="iv">watches your <b>Codex</b> images</div></div>
+        <div class="inst"><div class="il"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5L19 19"/></svg>Briefing</div><div class="iv">one warm sentence a day</div></div>
+        <div class="inst"><div class="il"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 17V5l10-2v12"/><circle cx="6.5" cy="17.5" r="2.3"/><circle cx="16.5" cy="15.5" r="2.3"/></svg>Music</div><div class="iv"><b>lo-fi</b> · ambient · Spotify</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 07 · DUSK — the turn -->
+  <section class="frame place-c" id="dusk">
+    <div class="col" style="max-width:680px">
+      <h2 class="scene reveal">Stay a while.</h2>
+      <p class="deck reveal" data-d="1" style="margin-left:auto;margin-right:auto;text-align:center">Your tools, one keystroke away — the dock launches your projects, the command palette runs anything, a focus timer holds the tide. Oasis finds the projects in your build folder on its own.</p>
+      <div class="dock reveal" data-d="2" aria-hidden="true">
+        <span class="pill live">design-studio</span>
+        <span class="pill">tide-clock</span>
+        <span class="pill">greenhouse</span>
+        <span class="pill live">oasis</span>
+        <span class="pill">+ your build folder</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- 08 · END CARD — Download -->
+  <section class="frame place-c" id="download">
+    <div class="endcard">
+      <div class="wordmark reveal">OASIS</div>
+      <div class="tag reveal" data-d="1">Free. Yours. Offline.</div>
+      <div class="dl-row reveal" data-d="2">
+        <a class="dl" id="dlMac" href="./download/Oasis-macOS.zip" download>
+          <span class="oi" aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M16.36 12.78c-.02-2.1 1.72-3.11 1.8-3.16-.98-1.44-2.51-1.63-3.05-1.65-1.3-.13-2.54.76-3.2.76-.66 0-1.68-.74-2.76-.72-1.42.02-2.73.83-3.46 2.1-1.48 2.56-.38 6.35 1.06 8.43.7 1.02 1.54 2.16 2.64 2.12 1.06-.04 1.46-.68 2.74-.68 1.28 0 1.64.68 2.76.66 1.14-.02 1.86-1.04 2.56-2.06.81-1.18 1.14-2.33 1.16-2.39-.03-.01-2.22-.85-2.24-3.38zM14.3 6.6c.58-.71.98-1.69.87-2.67-.84.03-1.86.56-2.46 1.26-.54.62-1.01 1.62-.88 2.57.94.07 1.89-.47 2.47-1.16z"/></svg></span>
+          <span class="om"><span class="on">Download for macOS</span><span class="os">Oasis-macOS.zip · Apple silicon &amp; Intel</span></span>
+        </a>
+        <a class="dl" id="dlWin" href="./download/Oasis-Windows.zip" download>
+          <span class="oi" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M3 5.4l7.6-1.04v7.16H3zM11.4 4.25 21 2.9v8.62h-9.6zM3 12.48h7.6v7.16L3 18.6zM11.4 12.48H21v8.62l-9.6-1.35z"/></svg></span>
+          <span class="om"><span class="on">Download for Windows</span><span class="os">Oasis-Windows.zip · Windows 10 / 11</span></span>
         </a>
       </div>
-      <p class="dl-note" id="dlNote">Both downloads need a free copy of Node.js · Claude Code + Codex recommended</p>
+      <div class="finered reveal" data-d="3" id="finered">
+        <span><b>REQUIRES</b> Node, free</span>
+        <span><b>DATA</b> stays on your disk</span>
+        <span><b>TELEMETRY</b> none, ever</span>
+        <span><b>SIZE</b> ~19 MB</span>
+        <span><b>NEEDS</b> Claude Code + Codex (recommended)</span>
+      </div>
     </div>
-  </div>
-</section>
+  </section>
 
-<!-- ===================== FAQ ===================== -->
-<section class="section-pad" id="faq">
-  <div class="wrap">
-    <div class="section-head fade-up" style="text-align:center;max-width:620px;margin-left:auto;margin-right:auto;">
-      <span class="label" style="justify-content:center;">FAQ</span>
-      <h2>Questions, answered.</h2>
-    </div>
-
-    <div class="faq">
-      <details class="fade-up">
-        <summary>Is it really free? <span class="plus" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span></summary>
-        <div class="answer">Yes. Oasis is free to download and use, with no account and no subscription. The only cost you ever pay is your own usage of Claude and Codex through the CLIs you already have.</div>
-      </details>
-
-      <details class="fade-up">
-        <summary>Does it run on Mac and Windows? <span class="plus" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span></summary>
-        <div class="answer">Both. There's a Mac download and a Windows download above — the page highlights the one for the machine you're on. On Mac you run <code>Setup Oasis.command</code>; on Windows, <code>Setup Oasis.bat</code>. Either way you need a free copy of <code>Node.js</code>, and Oasis has zero npm dependencies so it stays light on modest hardware.</div>
-      </details>
-
-      <details class="fade-up">
-        <summary>Do I need Claude Code and Codex? <span class="plus" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span></summary>
-        <div class="answer">They're recommended, not required. Ask and Ideas run through your local <code>claude</code> CLI, and the Gallery and ticker watch your Codex output. Without them, the water, Today, Journal, Music, Tool dock and the rest still work.</div>
-      </details>
-
-      <details class="fade-up">
-        <summary>Is my data private? <span class="plus" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span></summary>
-        <div class="answer">Completely. Oasis runs as a tiny local app on localhost with no account and no telemetry. Your ideas, tasks, journal and images stay on your machine. The only thing that ever leaves is the call you already make to Claude through your own CLI.</div>
-      </details>
-
-      <details class="fade-up">
-        <summary>macOS says it can't open the launcher — what do I do? <span class="plus" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span></summary>
-        <div class="answer">Because Oasis is a small unsigned script, the first launch needs a nudge: <strong>right-click <code>Setup Oasis.command</code> → Open</strong>, then confirm. If macOS still blocks it, open Terminal in the folder and run <code>chmod +x *.command</code> once. After that, double-click works normally. The included <code>START HERE (macOS).txt</code> walks you through it.</div>
-      </details>
-
-      <details class="fade-up">
-        <summary>How do I open it after setup? <span class="plus" aria-hidden="true"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></span></summary>
-        <div class="answer">Setup creates an <strong>Oasis</strong> shortcut. Open it any time and Oasis starts its local server quietly and opens in its own window. You can also run <code>Launch Oasis.command</code> (Mac) or <code>Launch Oasis.bat</code> (Windows) from the folder.</div>
-      </details>
-    </div>
-  </div>
-</section>
-
-<!-- ===================== FOOTER ===================== -->
-<footer>
-  <div class="wrap foot-inner">
-    <div class="foot-brand">
-      <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="#ef8a5d" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true"><path d="M4.5 15h15l-2.6 4.2H7.1z"/><path d="M12 3.4v11.6M12 6l6.4 9H12z" stroke="#f3fbfd"/></svg>
-      Oasis
-    </div>
-    <p class="foot-tag">A calm, private home base for the tools you build with. Local by design, free to keep, on Mac and Windows.</p>
-    <div class="foot-meta">
-      <span>© 2026 Oasis</span>
-      <span class="sep">·</span>
-      <span>Oasis is a local app. Spotify, Claude, and Codex are trademarks of their respective owners.</span>
-    </div>
-  </div>
-</footer>
+  <footer class="colophon">
+    <span>OASIS — a local oasis for builders</span>
+    <span>·</span>
+    <span>made to run on your own machine</span>
+    <span>·</span>
+    <a href="https://github.com/dakota1450/OASIS">view source</a>
+    <span>·</span>
+    <span>© 2026</span>
+  </footer>
+</main>
 
 <script>
-/* ---------------- Nav: scroll state + mobile sheet (with focus management) ---------------- */
 (function(){
-  var nav = document.getElementById('nav');
-  function onScroll(){ nav.classList.toggle('scrolled', window.scrollY > 24); }
+  var root = document.documentElement;
+  root.classList.add('js');
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if(reduce) document.body.classList.add('no-motion');
+
+  /* ---------- video: autoplay assist + the one dusk turn ---------- */
+  var sea = document.getElementById('sea');
+  var day = document.getElementById('sea-day');
+  var dusk = document.getElementById('sea-dusk');
+  var duskOn = false;
+  function tryPlay(v){ if(!v) return; var p = v.play && v.play(); if(p && p.catch) p.catch(function(){}); }
+  if(!reduce){
+    tryPlay(day);
+    // some browsers block autoplay until a gesture
+    window.addEventListener('pointerdown', function once(){ tryPlay(day); if(duskOn) tryPlay(dusk); window.removeEventListener('pointerdown', once); }, {passive:true});
+  }
+  function goDusk(){
+    if(duskOn || reduce) return;
+    duskOn = true;
+    try { dusk.load(); } catch(e){}
+    tryPlay(dusk);
+    sea.classList.add('dusk');
+    // after the cross-fade, tear down the day decoder to spare the GPU
+    setTimeout(function(){ try { day.pause(); } catch(e){} }, 2800);
+  }
+
+  /* ---------- reveal on scroll ---------- */
+  var reveals = document.querySelectorAll('.reveal');
+  if(reduce || !('IntersectionObserver' in window)){
+    reveals.forEach(function(el){ el.classList.add('in'); });
+  } else {
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(en){ if(en.isIntersecting){ en.target.classList.add('in'); io.unobserve(en.target); } });
+    }, {threshold:0.25, rootMargin:'0px 0px -10% 0px'});
+    reveals.forEach(function(el){ io.observe(el); });
+  }
+
+  /* ---------- trigger dusk when the turn arrives (or on download click) ---------- */
+  var duskScene = document.getElementById('dusk');
+  if('IntersectionObserver' in window){
+    var dio = new IntersectionObserver(function(entries){
+      entries.forEach(function(en){ if(en.isIntersecting){ goDusk(); dio.disconnect(); } });
+    }, {threshold:0.4});
+    dio.observe(duskScene);
+  }
+  // download click = "welcome aboard", bring the sun down now
+  document.getElementById('download').addEventListener('click', function(e){ if(e.target.closest('.dl')) goDusk(); });
+
+  /* ---------- wake-line progress ---------- */
+  var fill = document.getElementById('wakeFill');
+  var wake = document.getElementById('wake');
+  var ticking = false;
+  function onScroll(){
+    if(ticking) return; ticking = true;
+    requestAnimationFrame(function(){
+      var h = document.documentElement.scrollHeight - window.innerHeight;
+      var p = h > 0 ? Math.min(1, window.scrollY / h) : 0;
+      fill.style.height = (p * 100) + '%';
+      wake.classList.toggle('arrived', p > 0.97);
+      ticking = false;
+    });
+  }
   window.addEventListener('scroll', onScroll, {passive:true});
+  window.addEventListener('resize', onScroll, {passive:true});
   onScroll();
 
-  var toggle = document.getElementById('navToggle');
-  var sheet = document.getElementById('sheet');
-  var backdrop = document.getElementById('sheetBackdrop');
-  var closeBtn = document.getElementById('sheetClose');
-  var links = document.getElementById('sheetLinks');
-  var linkEls = links.querySelectorAll('a');
-  var lastFocus = null;
-
-  // staggered reveal of the sheet links (delay 0.18 + i*0.07)
-  linkEls.forEach(function(a, i){ a.style.transitionDelay = (0.18 + i * 0.07) + 's'; });
-
-  function focusables(){ return sheet.querySelectorAll('a[href], button:not([disabled])'); }
-
-  function openSheet(){
-    lastFocus = document.activeElement;
-    sheet.classList.add('open'); backdrop.classList.add('open');
-    sheet.removeAttribute('inert');
-    toggle.setAttribute('aria-expanded','true');
-    document.body.style.overflow = 'hidden';
-    // move focus into the dialog (the close button is the natural first stop)
-    closeBtn.focus();
+  /* ---------- live clock + greeting ---------- */
+  var clock = document.getElementById('clock');
+  function greet(h){ return h<5?'late night':h<12?'good morning':h<17?'good afternoon':h<21?'good evening':'good night'; }
+  function tick(){
+    var d = new Date(), h = d.getHours(), m = d.getMinutes();
+    clock.textContent = greet(h) + ' · ' + h + ':' + (m<10?'0':'') + m;
   }
-  function closeSheet(){
-    if(!sheet.classList.contains('open')) return;
-    sheet.classList.remove('open'); backdrop.classList.remove('open');
-    sheet.setAttribute('inert','');
-    toggle.setAttribute('aria-expanded','false');
-    document.body.style.overflow = '';
-    // return focus to whatever opened the menu, falling back to the toggle
-    var ret = (lastFocus && lastFocus !== document.body && document.contains(lastFocus)) ? lastFocus : toggle;
-    if(ret && ret.focus) ret.focus();
+  tick(); setInterval(tick, 30000);
+
+  /* ---------- the Ask demo: type → think → answer ---------- */
+  var ask = document.getElementById('ask');
+  var askQ = document.getElementById('askQ');
+  var QUESTION = "What's a tiny weekend project to learn WebGPU?";
+  var asked = false;
+  function runAsk(){
+    if(asked) return; asked = true;
+    if(reduce){ askQ.textContent = QUESTION; ask.classList.add('answered'); return; }
+    askQ.innerHTML = '<span class="cur"></span>';
+    var i = 0;
+    (function type(){
+      if(i <= QUESTION.length){
+        askQ.innerHTML = QUESTION.slice(0,i) + '<span class="cur"></span>';
+        i++; setTimeout(type, 38 + Math.random()*45);
+      } else {
+        askQ.textContent = QUESTION;
+        setTimeout(function(){
+          ask.classList.add('thinking');
+          setTimeout(function(){ ask.classList.remove('thinking'); ask.classList.add('answered'); }, 1500);
+        }, 420);
+      }
+    })();
   }
-  toggle.addEventListener('click', openSheet);
-  closeBtn.addEventListener('click', closeSheet);
-  backdrop.addEventListener('click', closeSheet);
-  links.addEventListener('click', function(e){ if(e.target.closest('a')) closeSheet(); });
-  document.querySelector('.sheet-cta').addEventListener('click', function(e){ if(e.target.closest('a')) closeSheet(); });
+  if('IntersectionObserver' in window && !reduce){
+    var aio = new IntersectionObserver(function(en){ if(en[0].isIntersecting){ runAsk(); aio.disconnect(); } }, {threshold:0.6});
+    aio.observe(ask);
+  } else { runAsk(); }
 
-  // Esc to close + simple focus trap while open
-  window.addEventListener('keydown', function(e){
-    if(!sheet.classList.contains('open')) return;
-    if(e.key === 'Escape'){ closeSheet(); return; }
-    if(e.key === 'Tab'){
-      var f = focusables(); if(!f.length) return;
-      var first = f[0], last = f[f.length-1];
-      if(e.shiftKey && document.activeElement === first){ e.preventDefault(); last.focus(); }
-      else if(!e.shiftKey && document.activeElement === last){ e.preventDefault(); first.focus(); }
-    }
-  });
-})();
-
-/* ---------------- Blur-fade-up reveal ---------------- */
-(function(){
-  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  var els = document.querySelectorAll('.fade-up');
-  if(reduce || !('IntersectionObserver' in window)){
-    els.forEach(function(el){ el.classList.add('in'); });
-    return;
-  }
-  // Above-the-fold (nav + hero) play on load; their stagger comes from inline animation-delay.
-  var aboveFold = document.querySelectorAll('.nav .fade-up, .hero .fade-up');
-  setTimeout(function(){ aboveFold.forEach(function(el){ el.classList.add('in'); }); }, 60);
-
-  // Everything below the fold reveals as it scrolls into view.
-  var io = new IntersectionObserver(function(entries){
-    entries.forEach(function(en){ if(en.isIntersecting){ en.target.classList.add('in'); io.unobserve(en.target); } });
-  }, {threshold:0.12, rootMargin:'0px 0px -8% 0px'});
-  els.forEach(function(el){ if(!el.closest('.hero') && !el.closest('.nav')) io.observe(el); });
-})();
-
-/* ---------------- OS detection for downloads ---------------- */
-(function(){
-  var mac = document.getElementById('dlMac');
-  var win = document.getElementById('dlWin');
-  var note = document.getElementById('dlNote');
-  var grid = mac.parentNode;
-
-  var ua = (navigator.userAgent || '');
-  var plat = ((navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '').toLowerCase();
-  var isMac = /mac/.test(plat) || /mac os x|macintosh/i.test(ua);
-  var isWin = /win/.test(plat) || /windows/i.test(ua);
-  // iPadOS reports as "Macintosh"/MacIntel but is touch + can't run a desktop zip.
-  var isIpad = /ipad/i.test(ua) || (/mac/.test(plat) && (navigator.maxTouchPoints || 0) > 1);
-  var isPhone = /android|iphone|ipod/i.test(ua);
-
-  if(isMac && !isWin && !isIpad && !isPhone){
-    mac.classList.add('detected'); grid.insertBefore(mac, win);
-    note.textContent = "We detected macOS — that's the highlighted one. Windows build is right beside it.";
-  } else if(isWin && !isPhone){
-    win.classList.add('detected'); grid.insertBefore(win, mac);
-    note.textContent = "We detected Windows — that's the highlighted one. macOS build is right beside it.";
-  } else {
-    note.textContent = "Oasis is a desktop app for Mac & Windows. Both downloads need a free copy of Node.js.";
-  }
-})();
-
-/* ============================================================
-   THE WATER — an interactive canvas ocean with a little boat.
-   Vanilla 2D canvas. Move the cursor to send ripples across the
-   sea and steer the boat; click to drop a splash. The Prev/Next
-   "scene" buttons cross-fade the palette between dawn, day, dusk
-   and night. Honors prefers-reduced-motion (live) and pauses
-   when the tab is hidden.
-   ============================================================ */
-(function(){
-  var canvas = document.getElementById('ocean');
-  if(!canvas) return;
-  var ctx = canvas.getContext('2d', { alpha: true });
-  if(!ctx){ return; } // gradient + ocean.jpg fallback stays visible
-
-  var mq = window.matchMedia('(prefers-reduced-motion: reduce)');
-  var reduce = mq.matches;
-
-  function hx(h){ h = h.replace('#',''); return [parseInt(h.slice(0,2),16), parseInt(h.slice(2,4),16), parseInt(h.slice(4,6),16)]; }
-  function css(c, a){ return 'rgba(' + (c[0]|0) + ',' + (c[1]|0) + ',' + (c[2]|0) + ',' + (a==null?1:a) + ')'; }
-  function mix(a, b, t){ return [a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t, a[2]+(b[2]-a[2])*t]; }
-
-  var KEYS = ['skyTop','skyHorizon','sunGlow','sunCore','waterFar','waterNear','aqua','foam'];
-  var MOODS = [
-    { name:'Dawn',  skyTop:hx('#2b2c58'), skyHorizon:hx('#e7a79f'), sunGlow:hx('#ffc6ac'), sunCore:hx('#fff0e6'), waterFar:hx('#2a5566'), waterNear:hx('#0a2733'), aqua:hx('#7fcdd6'), foam:hx('#f3dcd4') },
-    { name:'Day',   skyTop:hx('#0a3a4c'), skyHorizon:hx('#2b7e93'), sunGlow:hx('#ffd9a8'), sunCore:hx('#fff0d8'), waterFar:hx('#0e4456'), waterNear:hx('#04222e'), aqua:hx('#46c6d6'), foam:hx('#ade7ef') },
-    { name:'Dusk',  skyTop:hx('#2a1c46'), skyHorizon:hx('#e8784a'), sunGlow:hx('#ff8a4a'), sunCore:hx('#ffd2a0'), waterFar:hx('#173846'), waterNear:hx('#06202b'), aqua:hx('#4aa6c6'), foam:hx('#ffcaa0') },
-    { name:'Night', skyTop:hx('#061826'), skyHorizon:hx('#123246'), sunGlow:hx('#a9c4da'), sunCore:hx('#e8f0f8'), waterFar:hx('#0a2a38'), waterNear:hx('#02101a'), aqua:hx('#3a8ca6'), foam:hx('#bcd8e0') }
+  /* ---------- recent-agent-work ticker ---------- */
+  var ticker = document.querySelector('#ticker .line');
+  var LOG = [
+    '✳ <b>claude</b> · design-studio — “ocean hero polish” · 12m ago',
+    '✳ <b>codex</b> · tide-clock — generated 4 images · 27m ago',
+    '✳ <b>claude</b> · oasis — “cross-platform launchers” · 1h ago',
+    '✳ <b>codex</b> · greenhouse — “scout → board → brief” · 2h ago'
   ];
-  function snap(m){ var o = {}; KEYS.forEach(function(k){ o[k] = m[k].slice(); }); return o; }
+  var li = 0;
+  function showTick(){ ticker.style.opacity = 0; setTimeout(function(){ ticker.innerHTML = LOG[li % LOG.length]; ticker.style.opacity = 1; li++; }, 600); }
+  ticker.innerHTML = LOG[0]; li = 1;
+  if(!reduce) setInterval(showTick, 6000);
 
-  var hr = (new Date()).getHours();
-  var startIdx = (hr>=5 && hr<9) ? 0 : (hr>=9 && hr<17) ? 1 : (hr>=17 && hr<20) ? 2 : 3;
-  var cur = snap(MOODS[startIdx]);
-  var targetIdx = startIdx, settled = true;
-
-  var w = 0, h = 0, dpr = 1, horizon = 0, t = 0, raf = 0, lastTs = 0;
-  var pointer = { x: 0.5, y: 0.42, tx: 0.5, ty: 0.42, active: false };
-  var ripples = [];
-  var boat = { x: 0.6, tx: 0.6, lean: 0, vlean: 0 };
-  var boatS = 46;
-
-  // far (top, small) -> near (bottom, big)
-  var LAYERS = [
-    { off: 0.10, amp: 5,  len: 0.018, sp: 0.55, par: 6  },
-    { off: 0.24, amp: 9,  len: 0.015, sp: 0.75, par: 11 },
-    { off: 0.42, amp: 14, len: 0.012, sp: 0.95, par: 18 },
-    { off: 0.64, amp: 20, len: 0.010, sp: 1.20, par: 27 },
-    { off: 0.88, amp: 28, len: 0.008, sp: 1.55, par: 40 }
-  ];
-  // the boat sails on the mid sea, above the frosted bottom
-  var BOAT_LAYER = { off: 0.30, amp: 12, len: 0.011, sp: 0.95, par: 18 };
-
-  // cached gradients (frame-invariant except on resize / mood cross-fade)
-  var skyGrad = null, waterGrad = null, hullGrad = null, gradDirty = true;
-  function buildGrads(){
-    skyGrad = ctx.createLinearGradient(0, 0, 0, horizon + 30);
-    skyGrad.addColorStop(0, css(cur.skyTop)); skyGrad.addColorStop(1, css(cur.skyHorizon));
-    waterGrad = ctx.createLinearGradient(0, horizon, 0, h);
-    waterGrad.addColorStop(0, css(cur.waterFar)); waterGrad.addColorStop(1, css(cur.waterNear));
-  }
-  function buildHull(){
-    hullGrad = ctx.createLinearGradient(0, boatS * 0.14, 0, boatS * 0.6);
-    hullGrad.addColorStop(0, '#f6a079'); hullGrad.addColorStop(1, '#d4632f');
-  }
-
-  function resize(){
-    w = Math.max(1, canvas.clientWidth);
-    h = Math.max(1, canvas.clientHeight);
-    dpr = Math.min(window.devicePixelRatio || 1, 2);
-    canvas.width = Math.round(w * dpr);
-    canvas.height = Math.round(h * dpr);
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    horizon = h * 0.42;
-    var scale = Math.max(0.62, Math.min(1.1, w / 1300));
-    boatS = 44 * scale;
-    buildHull();
-    gradDirty = true;
-    draw(t); // paint at once — no blank flash, correct still in reduced-motion / hidden tabs
-  }
-
-  function surfaceY(layer, x, time){
-    var baseY = horizon + (h - horizon) * layer.off;
-    var y = baseY;
-    y += Math.sin(x * layer.len + time * layer.sp) * layer.amp;
-    y += Math.sin(x * layer.len * 2.3 - time * layer.sp * 1.4 + layer.off * 9) * layer.amp * 0.4;
-    y += Math.sin(x * layer.len * 0.5 + time * layer.sp * 0.6) * layer.amp * 0.5;
-    if(pointer.active){
-      var px = pointer.x * w, py = pointer.y * h;
-      if(py > horizon){
-        var d = (x - px);
-        var falloff = Math.exp(-(d * d) / (2 * 120 * 120));
-        var near = 1 - Math.min(1, Math.abs(baseY - py) / 220);
-        y -= falloff * near * 16;
-      }
-    }
-    return y;
-  }
-
-  function drawSky(){
-    ctx.fillStyle = skyGrad;
-    ctx.fillRect(0, 0, w, horizon + 30);
-    var sx = w * (0.30 + (pointer.x - 0.5) * 0.10);
-    var sy = horizon * (0.60 + (pointer.y - 0.45) * 0.10);
-    var rg = ctx.createRadialGradient(sx, sy, 0, sx, sy, Math.max(w, h) * 0.34);
-    rg.addColorStop(0, css(cur.sunGlow, .5));
-    rg.addColorStop(0.35, css(cur.sunGlow, .15));
-    rg.addColorStop(1, css(cur.sunGlow, 0));
-    ctx.fillStyle = rg; ctx.fillRect(0, 0, w, horizon + 80);
-    ctx.save(); ctx.globalAlpha = 0.9; ctx.beginPath();
-    ctx.arc(sx, sy, Math.min(w, h) * 0.05, 0, Math.PI * 2);
-    ctx.fillStyle = css(cur.sunCore, .85); ctx.fill(); ctx.restore();
-    return { sx: sx, sy: sy };
-  }
-
-  function drawWater(time){
-    ctx.fillStyle = waterGrad;
-    ctx.fillRect(0, horizon - 1, w, h - horizon + 1);
-    var step = Math.max(6, w / 220);
-    for(var li = 0; li < LAYERS.length; li++){
-      var layer = LAYERS[li];
-      var par = (pointer.x - 0.5) * layer.par;
-      ctx.beginPath();
-      ctx.moveTo(-20, h + 20);
-      ctx.lineTo(-20, surfaceY(layer, -20 - par, time));
-      for(var x = -20; x <= w + 20; x += step){ ctx.lineTo(x, surfaceY(layer, x - par, time)); }
-      ctx.lineTo(w + 20, h + 20);
-      ctx.closePath();
-      ctx.fillStyle = css(mix(cur.waterFar, cur.waterNear, layer.off));
-      ctx.fill();
-      ctx.beginPath();
-      var st = false;
-      for(var cx = -20; cx <= w + 20; cx += step){
-        var cy = surfaceY(layer, cx - par, time);
-        if(!st){ ctx.moveTo(cx, cy); st = true; } else ctx.lineTo(cx, cy);
-      }
-      ctx.strokeStyle = css(cur.aqua, 0.05 + li * 0.02);
-      ctx.lineWidth = 1.1; ctx.stroke();
-    }
-  }
-
-  function drawSunReflection(sun, time){
-    var topY = horizon + 2, bands = 16;
-    for(var i = 0; i < bands; i++){
-      var fy = i / bands;
-      var y = topY + fy * (h - topY);
-      var wobble = Math.sin(time * 1.6 + i * 0.9) * (6 + fy * 26);
-      var width = 10 + fy * 90;
-      var alpha = (0.16 - fy * 0.12) * (0.7 + 0.3 * Math.sin(time * 2 + i));
-      if(alpha <= 0) continue;
-      ctx.fillStyle = css(cur.sunCore, alpha);
-      ctx.fillRect(sun.sx - width / 2 + wobble, y, width, 3 + fy * 4);
-    }
-  }
-
-  function drawRipples(time){
-    for(var i = ripples.length - 1; i >= 0; i--){
-      var rp = ripples[i];
-      rp.age += 1;
-      var k = rp.age / rp.life;
-      if(k >= 1){ ripples.splice(i, 1); continue; }
-      var rad = rp.r0 + (rp.r1 - rp.r0) * k;
-      var a = (1 - k) * rp.alpha;
-      ctx.save();
-      ctx.translate(rp.x, rp.y);
-      ctx.scale(1, 0.34);
-      ctx.beginPath(); ctx.arc(0, 0, rad, 0, Math.PI * 2);
-      ctx.strokeStyle = css(cur.foam, a); ctx.lineWidth = rp.w; ctx.stroke();
-      if(rad > 16){
-        ctx.beginPath(); ctx.arc(0, 0, rad * 0.6, 0, Math.PI * 2);
-        ctx.strokeStyle = css(cur.aqua, a * 0.7); ctx.lineWidth = rp.w * 0.7; ctx.stroke();
-      }
-      ctx.restore();
-    }
-  }
-
-  function drawBoat(time){
-    boat.x += (boat.tx - boat.x) * 0.05;
-    var bx = boat.x * w;
-    var par = (pointer.x - 0.5) * BOAT_LAYER.par;
-    var by = surfaceY(BOAT_LAYER, bx - par, time) - 6;
-    var slope = surfaceY(BOAT_LAYER, bx - par + 14, time) - surfaceY(BOAT_LAYER, bx - par - 14, time);
-    var pitch = Math.atan2(slope, 28) * 0.6;
-
-    var targetLean = (pointer.x - boat.x) * 0.5;
-    boat.vlean += (targetLean - boat.lean) * 0.02;
-    boat.vlean *= 0.86;
-    boat.lean += boat.vlean;
-
-    var S = boatS;
-    ctx.save();
-    ctx.translate(bx, by);
-    ctx.rotate(pitch + boat.lean * 0.5);
-
-    ctx.save(); ctx.globalAlpha = 0.16; ctx.scale(1, -0.5); ctx.translate(0, 6); drawBoatBody(S); ctx.restore();
-
-    ctx.save(); ctx.scale(1, 0.34);
-    ctx.beginPath(); ctx.arc(0, S * 0.5, S * (0.9 + 0.12 * Math.sin(time * 3)), 0, Math.PI * 2);
-    ctx.strokeStyle = css(cur.foam, 0.18); ctx.lineWidth = 2; ctx.stroke();
-    ctx.restore();
-
-    drawBoatBody(S);
-    ctx.restore();
-  }
-
-  function drawBoatBody(S){
-    ctx.beginPath();
-    ctx.moveTo(-S * 0.62, S * 0.34);
-    ctx.quadraticCurveTo(0, S * 0.66, S * 0.62, S * 0.34);
-    ctx.lineTo(S * 0.46, S * 0.14);
-    ctx.lineTo(-S * 0.46, S * 0.14);
-    ctx.closePath();
-    ctx.fillStyle = hullGrad; ctx.fill();
-
-    ctx.beginPath();
-    ctx.moveTo(0, S * 0.12); ctx.lineTo(0, -S * 0.96);
-    ctx.strokeStyle = 'rgba(243,251,253,.9)';
-    ctx.lineWidth = Math.max(1.4, S * 0.045); ctx.lineCap = 'round'; ctx.stroke();
-
-    ctx.beginPath();
-    ctx.moveTo(S * 0.04, -S * 0.92); ctx.lineTo(S * 0.04, S * 0.06); ctx.lineTo(S * 0.66, S * 0.06);
-    ctx.closePath(); ctx.fillStyle = 'rgba(243,251,253,.97)'; ctx.fill();
-
-    ctx.beginPath();
-    ctx.moveTo(-S * 0.04, -S * 0.78); ctx.lineTo(-S * 0.04, S * 0.06); ctx.lineTo(-S * 0.52, S * 0.06);
-    ctx.closePath(); ctx.fillStyle = 'rgba(208,238,244,.92)'; ctx.fill();
-
-    ctx.beginPath();
-    ctx.moveTo(S * 0.04, -S * 0.92); ctx.lineTo(S * 0.04, S * 0.06); ctx.lineTo(S * 0.22, S * 0.06);
-    ctx.closePath(); ctx.fillStyle = 'rgba(70,198,214,.16)'; ctx.fill();
-
-    ctx.beginPath();
-    ctx.moveTo(0, -S * 0.96); ctx.lineTo(S * 0.30, -S * 0.86); ctx.lineTo(0, -S * 0.78);
-    ctx.closePath(); ctx.fillStyle = '#ef8a5d'; ctx.fill();
-  }
-
-  function draw(time){
-    if(gradDirty){ buildGrads(); gradDirty = false; }
-    ctx.clearRect(0, 0, w, h);
-    var sun = drawSky();
-    drawWater(time);
-    drawSunReflection(sun, time);
-    drawRipples(time);
-    drawBoat(time);
-  }
-
-  function frame(ts){
-    // self-heal if the rendered size drifted from the backing store
-    if(canvas.clientWidth && canvas.clientHeight && (canvas.clientWidth !== w || canvas.clientHeight !== h)) resize();
-    if(!lastTs) lastTs = ts;
-    var dt = Math.min(0.05, (ts - lastTs) / 1000);
-    lastTs = ts;
-    t += dt;
-
-    // cross-fade the palette toward the chosen scene
-    var tgt = MOODS[targetIdx], d = 0;
-    for(var ki = 0; ki < KEYS.length; ki++){
-      var c = cur[KEYS[ki]], g = tgt[KEYS[ki]];
-      c[0] += (g[0] - c[0]) * 0.06; c[1] += (g[1] - c[1]) * 0.06; c[2] += (g[2] - c[2]) * 0.06;
-    }
-    var gk = ['skyTop','skyHorizon','waterFar','waterNear','sunGlow'];
-    for(var gi = 0; gi < gk.length; gi++){
-      var cc = cur[gk[gi]], gg = tgt[gk[gi]];
-      d = Math.max(d, Math.abs(cc[0]-gg[0]), Math.abs(cc[1]-gg[1]), Math.abs(cc[2]-gg[2]));
-    }
-    if(d > 0.6){ gradDirty = true; settled = false; }
-    else if(!settled){ cur = snap(tgt); gradDirty = true; settled = true; }
-
-    pointer.x += (pointer.tx - pointer.x) * 0.08;
-    pointer.y += (pointer.ty - pointer.y) * 0.08;
-    boat.tx = Math.max(w > 900 ? 0.40 : 0.16, Math.min(0.86, pointer.x));
-
-    draw(t);
-    raf = requestAnimationFrame(frame);
-  }
-
-  function start(){ if(!raf && !reduce){ lastTs = 0; raf = requestAnimationFrame(frame); } }
-  function stop(){ if(raf){ cancelAnimationFrame(raf); raf = 0; } }
-
-  // ---- pointer interaction (listen on window so it works over the text) ----
-  var lastRipple = 0;
-  function setPointer(clientX, clientY){
-    var r = canvas.getBoundingClientRect();
-    var nx = (clientX - r.left) / r.width;
-    var ny = (clientY - r.top) / r.height;
-    if(ny < -0.2 || ny > 1.2) return;
-    pointer.tx = Math.max(0, Math.min(1, nx));
-    pointer.ty = Math.max(0, Math.min(1, ny));
-    pointer.active = true;
-  }
-  function addRipple(clientX, clientY, big){
-    if(reduce) return;
-    var r = canvas.getBoundingClientRect();
-    var x = clientX - r.left, y = clientY - r.top;
-    if(y < horizon - 30) return;
-    ripples.push({ x: x, y: y, age: 0, life: big ? 70 : 46, r0: big ? 6 : 3, r1: big ? 120 : 52, alpha: big ? 0.5 : 0.32, w: big ? 2.4 : 1.6 });
-    if(ripples.length > 60) ripples.shift();
-  }
-  window.addEventListener('pointermove', function(e){
-    setPointer(e.clientX, e.clientY);
-    var now = e.timeStamp || performance.now();
-    if(now - lastRipple > 55){ addRipple(e.clientX, e.clientY, false); lastRipple = now; }
-  }, {passive:true});
-  window.addEventListener('pointerdown', function(e){ setPointer(e.clientX, e.clientY); addRipple(e.clientX, e.clientY, true); }, {passive:true});
-
-  // ---- scene (mood) switching ----
-  function setMood(idx){
-    targetIdx = ((idx % MOODS.length) + MOODS.length) % MOODS.length;
-    settled = false;
-    var lab = document.getElementById('moodLabel'); if(lab) lab.textContent = MOODS[targetIdx].name;
-    if(reduce){ cur = snap(MOODS[targetIdx]); gradDirty = true; draw(t); }
-  }
-  var mp = document.getElementById('moodPrev'), mn = document.getElementById('moodNext'), ml = document.getElementById('moodLabel');
-  if(ml) ml.textContent = MOODS[startIdx].name;
-  if(mp) mp.addEventListener('click', function(){ setMood(targetIdx - 1); });
-  if(mn) mn.addEventListener('click', function(){ setMood(targetIdx + 1); });
-
-  // ---- respond to a live reduced-motion toggle ----
-  function onMQ(e){ reduce = e.matches; if(reduce){ stop(); draw(t); } else { start(); } }
-  if(mq.addEventListener) mq.addEventListener('change', onMQ);
-  else if(mq.addListener) mq.addListener(onMQ);
-
-  window.addEventListener('resize', resize, {passive:true});
-  if('ResizeObserver' in window){
-    try { new ResizeObserver(function(){ resize(); }).observe(canvas); } catch(e){}
-  }
-  document.addEventListener('visibilitychange', function(){ if(document.hidden) stop(); else start(); });
-
-  resize();
-  start();
+  /* ---------- OS-detected downloads (both always present) ---------- */
+  (function(){
+    var mac = document.getElementById('dlMac'), win = document.getElementById('dlWin');
+    var row = mac.parentNode, note = document.getElementById('finered');
+    var ua = navigator.userAgent || '';
+    var plat = ((navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '').toLowerCase();
+    var isMac = /mac/.test(plat) || /mac os x|macintosh/i.test(ua);
+    var isWin = /win/.test(plat) || /windows/i.test(ua);
+    var isIpad = /ipad/i.test(ua) || (/mac/.test(plat) && (navigator.maxTouchPoints||0) > 1);
+    var isPhone = /android|iphone|ipod/i.test(ua);
+    if(isMac && !isWin && !isIpad && !isPhone){ mac.classList.add('detected'); row.insertBefore(mac, win); }
+    else if(isWin && !isPhone){ win.classList.add('detected'); row.insertBefore(win, mac); }
+  })();
 })();
 </script>
 </body>
