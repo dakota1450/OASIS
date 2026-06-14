@@ -124,28 +124,36 @@ function showTab(name) {
 function panelTabsInit() { $$('.panel-tabs .ptab').forEach((tab) => tab.addEventListener('click', () => showTab(tab.dataset.tab))); }
 
 /* ================= ASK (the search bar, reimagined) ================= */
-let asking = false;
+let asking = false, askGen = 0;
+// The answer region (#ask-answer) is shared by answers, idea cards, and the
+// briefing. Every render goes through fillAnswer so it always carries a dismiss
+// button; clearAnswer empties it and bumps askGen so a response that lands AFTER
+// the user dismissed (or started something else) is discarded instead of
+// popping the panel back open.
+function answerHead() { return `<div class="ans-head"><button class="ans-dismiss" data-act="dismiss" title="Dismiss (Esc)" aria-label="Dismiss">${icon('x')}</button></div>`; }
+function fillAnswer(html) { const box = $('#ask-answer'); box.onclick = null; box.classList.add('has-content'); box.innerHTML = answerHead() + html; return box; }
+function clearAnswer() { const box = $('#ask-answer'); askGen++; box.onclick = null; box.classList.remove('has-content'); box.innerHTML = ''; }
 async function ask(q) {
   q = (q || '').trim();
   if (!q) { $('#ask-input').focus(); return; }
   if (asking) { toast('Still thinking on the last one'); return; }
-  asking = true; $('#ask').classList.add('busy'); $('#ask-go').disabled = true; $('#ask-ideas').disabled = true;
-  $('#ask-answer').innerHTML = `<div class="ans-card thinking"><span class="ripple-dots"><i></i><i></i><i></i></span>Thinking…</div>`;
+  asking = true; const gen = ++askGen; $('#ask').classList.add('busy'); $('#ask-go').disabled = true; $('#ask-ideas').disabled = true;
+  fillAnswer(`<div class="ans-card thinking"><span class="ripple-dots"><i></i><i></i><i></i></span>Thinking…</div>`);
   try {
     const r = await fetch('/api/ask', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ q }) });
     const data = await r.json();
-    if (!data.ok) { $('#ask-answer').innerHTML = ''; toast(data.error || 'No answer came back'); return; }
+    if (gen !== askGen) return;                                  // dismissed / superseded
+    if (!data.ok) { clearAnswer(); toast(data.error || 'No answer came back'); return; }
     renderAnswer(q, data.answer);
-  } catch { $('#ask-answer').innerHTML = ''; toast("Couldn't reach the assistant"); }
+  } catch { if (gen === askGen) { clearAnswer(); toast("Couldn't reach the assistant"); } }
   finally { asking = false; $('#ask').classList.remove('busy'); $('#ask-go').disabled = false; $('#ask-ideas').disabled = false; }
 }
 function renderAnswer(q, answer) {
-  const box = $('#ask-answer'); box.onclick = null;
-  box.innerHTML = `<div class="ans-card"><div class="ans-body">${md(answer)}</div>
+  const box = fillAnswer(`<div class="ans-card"><div class="ans-body">${md(answer)}</div>
     <div class="ans-ops">
       <button data-act="copy">${icon('copy')}Copy</button>
       <button class="cap" data-act="capture">${icon('plus')}Capture</button>
-    </div></div>`;
+    </div></div>`);
   box.querySelector('.ans-ops').onclick = async (e) => {
     const b = e.target.closest('button'); if (!b) return;
     if (b.dataset.act === 'copy') toast((await copyText(answer)) ? 'Copied' : 'Copy failed');
@@ -154,29 +162,29 @@ function renderAnswer(q, answer) {
 }
 async function driftIdeas(seed) {
   if (asking) { toast('Still thinking on the last one'); return; }
-  asking = true; $('#ask').classList.add('busy'); $('#ask-go').disabled = true; $('#ask-ideas').disabled = true;
-  $('#ask-answer').innerHTML = `<div class="ans-card thinking"><span class="ripple-dots"><i></i><i></i><i></i></span>Finding ideas…</div>`;
+  asking = true; const gen = ++askGen; $('#ask').classList.add('busy'); $('#ask-go').disabled = true; $('#ask-ideas').disabled = true;
+  fillAnswer(`<div class="ans-card thinking"><span class="ripple-dots"><i></i><i></i><i></i></span>Finding ideas…</div>`);
   try {
     const r = await fetch('/api/spark', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ seed, mode: 'ideas' }) });
     const data = await r.json();
-    if (!data.ok || !Array.isArray(data.items)) { $('#ask-answer').innerHTML = ''; toast(data.error || 'No ideas came back'); return; }
+    if (gen !== askGen) return;                                  // dismissed / superseded
+    if (!data.ok || !Array.isArray(data.items)) { clearAnswer(); toast(data.error || 'No ideas came back'); return; }
     renderIdeaCards(data.items);
-  } catch { $('#ask-answer').innerHTML = ''; toast("Couldn't reach the assistant"); }
+  } catch { if (gen === askGen) { clearAnswer(); toast("Couldn't reach the assistant"); } }
   finally { asking = false; $('#ask').classList.remove('busy'); $('#ask-go').disabled = false; $('#ask-ideas').disabled = false; }
 }
 function renderIdeaCards(items) {
-  const box = $('#ask-answer');
-  box.innerHTML = items.map((it) => {
+  const box = fillAnswer(items.map((it) => {
     const text = `${it.title} — ${it.blurb}`;
     return `<div class="ans-card"><div class="ans-body"><strong>${esc(it.title)}</strong><p style="margin:.3em 0 0">${esc(it.blurb)}</p></div>
       <div class="ans-ops">
         <button data-act="copy" data-text="${esc(text)}">${icon('copy')}Copy</button>
         <button class="cap" data-act="capture" data-text="${esc(text)}">${icon('plus')}Capture</button>
       </div></div>`;
-  }).join('');
+  }).join(''));
   box.querySelectorAll('.ans-card').forEach((c, i) => { c.style.animationDelay = Math.min(i * 70, 400) + 'ms'; });
   box.onclick = (e) => {
-    const b = e.target.closest('button[data-act]'); if (!b) return; const text = b.dataset.text;
+    const b = e.target.closest('button[data-act]'); if (!b || b.dataset.act === 'dismiss') return; const text = b.dataset.text;
     if (b.dataset.act === 'copy') copyText(text).then((ok) => toast(ok ? 'Copied' : 'Copy failed'));
     else if (b.dataset.act === 'capture') showCaptureMenu(b, text, '');
   };
@@ -184,6 +192,7 @@ function renderIdeaCards(items) {
 function askInit() {
   $('#ask-form').addEventListener('submit', (e) => { e.preventDefault(); closeAllPops(); ask($('#ask-input').value); });
   $('#ask-ideas').addEventListener('click', () => { closeAllPops(); driftIdeas($('#ask-input').value.trim()); });
+  $('#ask-answer').addEventListener('click', (e) => { if (e.target.closest('[data-act="dismiss"]')) clearAnswer(); });
 }
 
 /* ================= ideas (notes) ================= */
@@ -762,6 +771,7 @@ function paletteActions() {
   add('note', 'Music: play / pause', 'sound', () => { closePalette(); radioToggle(); }, 'radio lofi ambient');
   add('note', 'Open music', 'sound', () => { closePalette(); $('#player').classList.remove('collapsed'); }, 'radio');
   add('settings', 'Preferences', 'system', () => { closePalette(); openSetup(true); }, 'settings config');
+  add('refresh', 'Check for updates', 'system', () => { closePalette(); checkForUpdates(false); }, 'update upgrade version new release');
   add('plus', 'Add a tool to the dock', 'system', () => { closePalette(); $('#tool-add').classList.remove('hidden'); $('#tool-name').focus(); }, 'launcher');
   dockTools.forEach((t) => add('arrow', `Launch ${t.name}`, 'launch', () => { closePalette(); launchTool(t.id, primaryAction(t)); }, 'open run tool project'));
   return a;
@@ -907,6 +917,44 @@ function setupInit() {
   $('#su-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#su-next').click(); });
 }
 
+/* ================= updates (user-initiated; nothing auto-phones home) ================= */
+let updateInfo = null;
+async function loadVersion() {
+  try { const v = await (await fetch('/api/version')).json(); if (v && v.version) $('#su-version').textContent = 'v' + v.version; } catch {}
+}
+async function checkForUpdates(silent) {
+  const btn = $('#su-check-update');
+  if (btn) { btn.disabled = true; btn.textContent = 'Checking…'; }
+  let data = null; try { data = await (await fetch('/api/update/check')).json(); } catch {}
+  if (btn) { btn.disabled = false; btn.textContent = 'Check for updates'; }
+  if (!data || !data.ok) { if (!silent) toast((data && data.error) || 'Could not check for updates'); return; }
+  updateInfo = data;
+  if (data.current) $('#su-version').textContent = 'v' + data.current;
+  if (!data.updateAvailable) { if (!silent) toast(`You're on the latest version (v${data.current})`); return; }
+  $('#ub-text').textContent = `Oasis v${data.latest} is available` + (data.notes ? ' — ' + data.notes : '');
+  $('#update-banner').classList.remove('hidden');
+}
+async function applyUpdate() {
+  const data = updateInfo || {};
+  if (data.isGit) {
+    const go = $('#ub-go'); go.disabled = true; go.textContent = 'Updating…';
+    let r = null; try { r = await (await fetch('/api/update/apply', { method: 'POST' })).json(); } catch {}
+    go.disabled = false; go.textContent = 'Update now';
+    if (r && r.ok) { $('#update-banner').classList.add('hidden'); toast('Updated — restart Oasis to finish'); }
+    else { toast((r && r.error) || 'Update failed — try a manual git pull'); }
+  } else if (data.downloadUrl) {
+    window.open(data.downloadUrl, '_blank', 'noopener');
+    $('#update-banner').classList.add('hidden');
+    toast('Opening the latest version — unzip it over your Oasis folder, then relaunch');
+  } else { toast('No download available for this platform'); }
+}
+function updateInit() {
+  loadVersion();
+  const cu = $('#su-check-update'); if (cu) cu.addEventListener('click', () => checkForUpdates(false));
+  const go = $('#ub-go'); if (go) go.addEventListener('click', applyUpdate);
+  const dz = $('#ub-dismiss'); if (dz) dz.addEventListener('click', () => $('#update-banner').classList.add('hidden'));
+}
+
 /* ================= global keyboard ================= */
 function keyboardInit() {
   document.addEventListener('keydown', (e) => {
@@ -920,6 +968,7 @@ function keyboardInit() {
       if (!$('#gallery').classList.contains('hidden')) return closeGallery();
       if (!$('#tool-add').classList.contains('hidden')) return $('#tool-add').classList.add('hidden');
       if (!$('#timer-pop').classList.contains('hidden')) return $('#timer-pop').classList.add('hidden');
+      if ($('#ask-answer').classList.contains('has-content')) return clearAnswer();
       return;
     }
     const typing = /^(INPUT|TEXTAREA)$/.test(e.target.tagName);
@@ -998,28 +1047,28 @@ function showCaptureMenu(anchor, text, q) {
 
 /* ---- daily briefing (one cached claude -p insight per day) ---- */
 function renderBriefing(data) {
-  const box = $('#ask-answer'); box.onclick = null;
   const s = data.stats || {};
   const line = data.insight || (data.pending ? 'Looking over your day…' : 'A fresh, open day — nothing logged yet.');
   const chip = (val, label) => `<span class="brief-chip"><b>${val}</b> ${label}</span>`;
-  box.innerHTML = `<div class="ans-card brief">
+  fillAnswer(`<div class="ans-card brief">
     <div class="brief-line ${data.insight ? '' : 'empty-line'}">${esc(line)}</div>
     <div class="brief-stats">
       ${chip(s.done || 0, 'done today')}
       ${chip(s.open || 0, 'open')}
       ${chip(s.journal || 0, s.journal === 1 ? 'journal entry' : 'journal entries')}
       ${s.mood ? `<span class="brief-chip"><span class="dot" style="background:${moodColor(s.mood)}"></span>${esc(s.mood)}</span>` : ''}
-    </div></div>`;
+    </div></div>`);
 }
 async function showBriefing() {
   closeAllPops();
-  const box = $('#ask-answer'); box.onclick = null;
-  box.innerHTML = `<div class="ans-card thinking"><span class="ripple-dots"><i></i><i></i><i></i></span>Gathering your day…</div>`;
+  const gen = ++askGen;
+  fillAnswer(`<div class="ans-card thinking"><span class="ripple-dots"><i></i><i></i><i></i></span>Gathering your day…</div>`);
   try {
     const data = await (await fetch('/api/briefing')).json();
+    if (gen !== askGen) return;
     renderBriefing(data);
-    if (data.pending) setTimeout(async () => { try { const d2 = await (await fetch('/api/briefing')).json(); if (!d2.pending) renderBriefing(d2); } catch {} }, 6500);
-  } catch { box.innerHTML = ''; toast('Could not load briefing'); }
+    if (data.pending) setTimeout(async () => { try { const d2 = await (await fetch('/api/briefing')).json(); if (gen === askGen && !d2.pending) renderBriefing(d2); } catch {} }, 6500);
+  } catch { if (gen === askGen) { clearAnswer(); toast('Could not load briefing'); } }
 }
 function briefingInit() { $('#btn-briefing').addEventListener('click', showBriefing); }
 function maybeAutoBriefing() {
@@ -1447,7 +1496,7 @@ function visibilityInit() {
 tickClock(); applyPhase();
 $('#sea-poster').addEventListener('error', () => document.body.classList.add('no-photo'));  // both video + poster gone → gradient
 document.addEventListener('pointerdown', seaResume, { once: true });                          // resume if autoplay was blocked
-sceneInit(); panelTabsInit(); askInit(); askHistoryInit(); ideasInit(); tasksInit(); journalInit(); galleryInit(); lightboxInit(); tickerInit(); dockInit(); playerInit(); paletteInit(); timerInit(); briefingInit(); agentLogInit(); terminalInit(); relayInit(); setupInit(); visibilityInit(); keyboardInit();
+sceneInit(); panelTabsInit(); askInit(); askHistoryInit(); ideasInit(); tasksInit(); journalInit(); galleryInit(); lightboxInit(); tickerInit(); dockInit(); playerInit(); paletteInit(); timerInit(); briefingInit(); agentLogInit(); terminalInit(); relayInit(); setupInit(); updateInit(); visibilityInit(); keyboardInit();
 loadTasks(); loadIdeas(); loadJournal(); loadTicker(); loadDock();
 loadConfig().then(spotifyHandleRedirect);
 startTimers();

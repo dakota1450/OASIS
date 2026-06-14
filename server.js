@@ -25,6 +25,11 @@ function osOpen(target) {
 
 const PORT = Number(process.env.PORT) || 7777;
 const ROOT = __dirname;
+// Bump on every release; the published docs/version.json carries the same number
+// so a running copy can tell when a newer one has shipped. The update CHECK is
+// user-initiated only (no automatic outbound, nothing phoned home — see SECURITY.md).
+const VERSION = '1.1.0';
+const UPDATE_MANIFEST = process.env.OASIS_UPDATE_MANIFEST || 'https://dakota1450.github.io/OASIS/version.json';
 const PUBLIC_DIR = path.join(ROOT, 'public');
 const SITE_DIR = path.join(ROOT, 'docs');                // marketing page (also the GitHub Pages site)
 const DATA_DIR = path.join(ROOT, 'data');
@@ -888,6 +893,52 @@ function revealAsset(id) {
   return { ok: true };
 }
 
+// ---------- updates (user-initiated check against the published manifest) ----------
+// A small GET of docs/version.json on the public site, only when the user clicks
+// "Check for updates" — no automatic outbound, no data sent. A git checkout can
+// self-update via `git pull`; a downloaded copy is pointed at the new zip.
+const isGitCheckout = () => fs.existsSync(path.join(ROOT, '.git'));
+
+function cmpVer(a, b) {
+  const pa = String(a).split('.').map((n) => parseInt(n, 10) || 0);
+  const pb = String(b).split('.').map((n) => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) { const d = (pa[i] || 0) - (pb[i] || 0); if (d) return d < 0 ? -1 : 1; }
+  return 0;
+}
+
+function httpsGetText(url, cb, redirects = 0) {
+  if (!/^https:\/\//i.test(url)) return cb(new Error('https only'));
+  if (redirects > 3) return cb(new Error('too many redirects'));
+  let req;
+  const to = setTimeout(() => { try { if (req) req.destroy(); } catch {} cb(new Error('timed out')); }, 10000);
+  req = https.get(url, { headers: { 'User-Agent': 'Oasis' } }, (resp) => {
+    if ([301, 302, 303, 307, 308].includes(resp.statusCode) && resp.headers.location) {
+      clearTimeout(to); resp.resume();
+      return httpsGetText(new URL(resp.headers.location, url).href, cb, redirects + 1);
+    }
+    if (resp.statusCode !== 200) { clearTimeout(to); resp.resume(); return cb(new Error('http ' + resp.statusCode)); }
+    let data = '', over = false;
+    resp.on('data', (c) => { data += c; if (data.length > 1e6 && !over) { over = true; req.destroy(); clearTimeout(to); cb(new Error('too large')); } });
+    resp.on('end', () => { if (!over) { clearTimeout(to); cb(null, data); } });
+  });
+  req.on('error', (e) => { clearTimeout(to); cb(e); });
+}
+
+function checkUpdate(cb) {
+  httpsGetText(UPDATE_MANIFEST, (err, text) => {
+    if (err) return cb({ ok: false, error: 'could not reach the update server', current: VERSION, isGit: isGitCheckout() });
+    let m; try { m = JSON.parse(text); } catch { return cb({ ok: false, error: 'bad update manifest', current: VERSION, isGit: isGitCheckout() }); }
+    const latest = String(m.version || '');
+    const downloadUrl = (IS_WIN ? m.windows : IS_MAC ? m.macos : (m.windows || m.macos)) || '';
+    cb({
+      ok: true, current: VERSION, latest,
+      updateAvailable: !!latest && cmpVer(latest, VERSION) > 0,
+      notes: typeof m.notes === 'string' ? m.notes.slice(0, 300) : '',
+      downloadUrl, isGit: isGitCheckout(),
+    });
+  });
+}
+
 // ---------- terminal: PTY over a hand-rolled WebSocket ----------
 // We implement RFC 6455 framing in stdlib (no `ws` dep). Browsers send each
 // .send() as a single FIN=1 masked frame, so we treat one data frame as one
@@ -1023,6 +1074,17 @@ async function handleApi(req, res, url) {
     if (url.searchParams.get('fresh')) { claudeAvail = null; codexAvail = null; }
     const [claude, codex] = await Promise.all([probeClaude(), probeCodex()]);
     return sendJson(res, 200, { claude, codex, codexBin: CODEX_BIN || null });
+  }
+
+  // updates — version + user-initiated check/apply
+  if (url.pathname === '/api/version' && req.method === 'GET') return sendJson(res, 200, { version: VERSION, isGit: isGitCheckout() });
+  if (url.pathname === '/api/update/check' && req.method === 'GET') return checkUpdate((r) => sendJson(res, 200, r));
+  if (url.pathname === '/api/update/apply' && req.method === 'POST') {
+    if (!isGitCheckout()) return sendJson(res, 200, { ok: false, manual: true, error: 'This copy was installed from a download — use the download to get the new version.' });
+    return exec('git pull --ff-only', { cwd: ROOT, windowsHide: true, timeout: 60000 }, (err, stdout, stderr) => {
+      if (err) return sendJson(res, 200, { ok: false, error: ((stderr || err.message || 'git pull failed') + '').split('\n')[0] });
+      return sendJson(res, 200, { ok: true, output: ((stdout || '') + '').slice(0, 500), restartNeeded: true });
+    });
   }
 
   // notes

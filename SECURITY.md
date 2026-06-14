@@ -29,10 +29,12 @@ guard in [§ Guards](#guards-in-the-code).
 - **No telemetry. Nothing about the user leaves the machine.** Outbound traffic
   happens only when the user asks for it: (a) an image import from an `https` URL
   the user pastes, (b) the local `claude` / `codex` CLIs doing whatever they
-  normally do, and (c) the music panel — internet radio streams plus the optional
+  normally do, (c) the music panel — internet radio streams plus the optional
   Spotify and YouTube integrations (Spotify embeds and the user's own Spotify
-  login, `youtube-nocookie.com` embeds for pasted/saved links). No analytics, no
-  beacons — nothing about *you* is ever sent anywhere.
+  login, `youtube-nocookie.com` embeds for pasted/saved links), and (d) a manual
+  update check — a single `GET` of the public release manifest when the user
+  clicks "Check for updates" (never automatic; the request carries nothing about
+  the user). No analytics, no beacons — nothing about *you* is ever sent anywhere.
 - **Personal data stays local and out of git.** `data/` (notes, todos, journal,
   ask history, briefings, config) and `assets/*` (imported images) are
   `.gitignore`d. The distributed zip ships **empty** data — `package.ps1` stages

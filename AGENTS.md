@@ -90,12 +90,15 @@ target hardware. Breaking one is a regression even if the app still "works."
 - **No external network at runtime, except user-initiated media.** No CDNs, no
   web fonts, no analytics, nothing phoned home. The only outbound traffic is
   things the user explicitly asks for: (a) the image import from an `https` URL,
-  (b) the local `claude` / `codex` CLIs, and (c) the **music panel** — internet
+  (b) the local `claude` / `codex` CLIs, (c) the **music panel** — internet
   radio streams, and the optional Spotify and YouTube integrations (Spotify
   embeds + PKCE OAuth to the user's own Spotify; `youtube-nocookie.com` embeds
-  for pasted/saved links). Those media integrations are the only cross-origin
-  `fetch`/embed targets; everything else in the frontend is same-origin only.
-  Don't add new outbound calls beyond this set without surfacing it (see §10).
+  for pasted/saved links), and (d) the **manual update check** — a single `GET`
+  of the published release manifest, only when the user clicks "Check for
+  updates" (never automatic, sends nothing about the user). Those are the only
+  cross-origin `fetch`/embed targets; everything else in the frontend is
+  same-origin only. Don't add new outbound calls beyond this set without
+  surfacing it (see §10) — in particular, do NOT make the update check automatic.
 - **No telemetry, ever.** Nothing about the user leaves the machine.
 - **Performance target = ThinkPad T570 with integrated graphics.** No
   `filter: blur()` on large or animated elements. `backdrop-filter` on the

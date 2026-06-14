@@ -110,6 +110,10 @@ body.no-photo { background: linear-gradient(155deg, #46c6d6 0%, #129fb6 42%, #0a
 #ask-answer { width: 100%; max-width: 700px; margin-top: 1.3rem; overflow-y: auto; padding-bottom: 1rem; min-height: 0;
   scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.6) transparent; }
 #ask-answer::-webkit-scrollbar { width: 6px; } #ask-answer::-webkit-scrollbar-thumb { background: rgba(255,255,255,.6); border-radius: 99px; }
+.ans-head { display: flex; justify-content: flex-end; margin-bottom: .45rem; }
+.ans-dismiss { display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; cursor: pointer; color: var(--ink-soft); background: rgba(255,255,255,.5); border: 1px solid rgba(255,255,255,.6); transition: background .15s, color .15s; }
+.ans-dismiss:hover { background: rgba(226,115,74,.18); color: var(--coral-deep); }
+.ans-dismiss .ic { font-size: 1rem; }
 .ans-card { border-radius: 20px; padding: 1.15rem 1.3rem 1rem; animation: rise .45s cubic-bezier(.2,.8,.3,1); }
 @keyframes rise { from { opacity: 0; transform: translateY(14px); } }
 .ans-card.thinking { display: flex; align-items: center; gap: .7rem; color: var(--ink-soft); font-family: var(--serif); font-style: italic; }
@@ -443,6 +447,24 @@ body.no-photo { background: linear-gradient(155deg, #46c6d6 0%, #129fb6 42%, #0a
 .setup-nav .ghost:hover { background: rgba(255,255,255,.6); }
 .setup-nav .primary { color: #fff; background: linear-gradient(150deg, var(--coral), var(--coral-deep)); border: 0; font-weight: 600; }
 .setup-nav .primary:hover { box-shadow: 0 5px 16px rgba(226,115,74,.5); }
+.setup-version { display: flex; align-items: center; gap: .6rem; margin-top: 1.1rem; padding-top: .9rem; border-top: 1px solid rgba(12,58,71,.1); font-size: .74rem; color: var(--ink-faint); }
+.setup-version button { font: inherit; font-size: .74rem; cursor: pointer; color: var(--aqua-deep); background: none; border: 0; padding: 0; text-decoration: underline; text-underline-offset: 2px; }
+.setup-version button:disabled { opacity: .6; cursor: default; text-decoration: none; }
+
+/* update banner — only shown when a newer version is published */
+#update-banner { position: fixed; left: 50%; top: 1rem; transform: translateX(-50%); z-index: 80; display: flex; align-items: center; gap: .7rem;
+  max-width: min(680px, 92vw); padding: .6rem .7rem .6rem .95rem; border-radius: 16px; background: var(--glass-strong); box-shadow: var(--soft-shadow);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px); border: 1px solid rgba(255,255,255,.5); animation: rise .3s ease; }
+#update-banner.hidden { display: none; }
+#update-banner > .ic { color: var(--aqua); font-size: 1.15rem; flex: none; }
+#ub-text { font-size: .82rem; color: var(--ink); flex: 1; min-width: 0; line-height: 1.4; }
+#update-banner button { font: inherit; font-size: .78rem; cursor: pointer; border-radius: 10px; padding: .45em 1em; flex: none; transition: background .15s, box-shadow .15s; }
+#ub-go { color: #fff; background: linear-gradient(150deg, var(--coral), var(--coral-deep)); border: 0; font-weight: 600; }
+#ub-go:hover { box-shadow: 0 5px 16px rgba(226,115,74,.5); }
+#ub-go:disabled { opacity: .6; cursor: default; }
+#ub-dismiss { color: var(--ink-soft); background: rgba(255,255,255,.4); border: 1px solid rgba(255,255,255,.55); }
+#ub-dismiss:hover { background: rgba(255,255,255,.6); }
+@media (max-width: 620px) { #update-banner { flex-wrap: wrap; } #ub-text { flex-basis: 100%; } }
 
 /* ---------------- popovers: ask history + agent log ---------------- */
 /* ---------------- relay: Claude × Codex orchestration ---------------- */

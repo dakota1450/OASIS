@@ -8,6 +8,15 @@ the first tag.
 ## [Unreleased]
 
 ### Added
+- **In-app updates (user-initiated).** Oasis now knows its own version and can
+  check for a newer one on demand — a **Check for updates** action in the command
+  palette and in Preferences (which also shows the current version). When a newer
+  release is published, a slim banner offers **Update now**: a git checkout runs
+  `git pull`; a downloaded copy is pointed straight at the new zip. The check is
+  manual only — it runs a single `GET` of the public release manifest
+  (`docs/version.json`) when you ask, sends nothing about you, and never runs
+  automatically. Backed by `GET /api/version`, `GET /api/update/check`, and
+  `POST /api/update/apply`.
 - **Connect Claude & Codex at intake.** The setup wizard gains a step that
   detects whether the `claude` and `codex` CLIs are installed and shows, live,
   whether Ask / Ideas / the daily briefing and the relay are ready. If one isn't
@@ -76,6 +85,11 @@ the first tag.
   the real looping ocean video.
 
 ### Fixed
+- **Ask answers can be dismissed.** The center answer area (answers, idea cards,
+  and the daily briefing) had no close control, so once triggered it stayed put
+  and crowded the dashboard. Every answer now carries a dismiss (×) button, and
+  Escape clears it. A late response that arrives after you've dismissed (or
+  started something else) is now discarded instead of popping the panel back open.
 - **`codex` now works in the terminal (and the relay uses real Codex).** The
   OpenAI desktop install tucks the Codex CLI under
   `%LOCALAPPDATA%\OpenAI\Codex\bin\…` and doesn't put it on `PATH`, so typing
