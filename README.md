@@ -98,6 +98,10 @@ After that, open Oasis any time from the **Oasis** shortcut (or
 `Launch Oasis.bat` on Windows / `Launch Oasis.command` on macOS). To change
 preferences later, click the settings icon in the top-right corner.
 
+> **After an update**, run **`Restart Oasis`** (`.bat` / `.command`) rather than
+> Launch. Launch reuses an already-running server, so it would keep showing the
+> old version; Restart fully stops the server and reloads the new one.
+
 > Oasis listens on `http://localhost:7777`. Everything stays on your machine.
 
 ### Optional: connect your own Spotify

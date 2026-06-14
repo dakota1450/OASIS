@@ -28,7 +28,7 @@ const ROOT = __dirname;
 // Bump on every release; the published docs/version.json carries the same number
 // so a running copy can tell when a newer one has shipped. The update CHECK is
 // user-initiated only (no automatic outbound, nothing phoned home — see SECURITY.md).
-const VERSION = '1.1.2';
+const VERSION = '1.1.3';
 const UPDATE_MANIFEST = process.env.OASIS_UPDATE_MANIFEST || 'https://dakota1450.github.io/OASIS/version.json';
 const PUBLIC_DIR = path.join(ROOT, 'public');
 const SITE_DIR = path.join(ROOT, 'docs');                // marketing page (also the GitHub Pages site)
