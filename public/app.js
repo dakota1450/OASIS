@@ -57,7 +57,7 @@ function md(src) {
   return html;
 }
 
-let cfg = { name: '', defaultPhase: 'auto', radioBank: 'lofi', radioStation: 0, autoplay: false, showActivity: true, spotifyClientId: '', origin: '', setupDone: true, defaultBuildDir: '' };
+let cfg = { name: '', defaultPhase: 'auto', radioBank: 'lofi', radioStation: 0, showActivity: true, spotifyClientId: '', ytSaved: [], origin: '', setupDone: true, defaultBuildDir: '', terminalEnabled: false };
 
 /* ================= phase + clock + sea ================= */
 let phaseOverride = 'auto';
@@ -432,8 +432,12 @@ function tickerInit() {
 }
 
 /* ================= dock ================= */
+/* A clean, drag-to-reorder row of project chips. Click a chip to launch it; drag
+   it to reorder (order persists in localStorage). No per-chip sub-buttons — just
+   the projects and a single add (+). */
 const ACTION_ORDER = ['bat', 'dev', 'url', 'folder'];
-let dockExpanded = false, dockTools = [];
+const DOCK_ORDER_KEY = 'oasis_dock_order';
+let dockTools = [], dockDragEnd = 0;
 async function loadDock() { dockTools = await (await fetch('/api/tools')).json(); renderDock(dockTools); }
 function primaryAction(t) { return ACTION_ORDER.find((a) => t.actions.includes(a)) || 'folder'; }
 async function launchTool(id, action) {
@@ -442,23 +446,50 @@ async function launchTool(id, action) {
     toast(data.ok ? 'Launched' : (data.error || 'Could not launch'));
   } catch { toast('Could not launch'); }
 }
+function loadDockOrder() { try { return JSON.parse(localStorage.getItem(DOCK_ORDER_KEY)) || []; } catch { return []; } }
+function saveDockOrder() {
+  const ids = [...$('#dock').querySelectorAll('.pill:not(.add)')].map((p) => p.dataset.id);
+  try { localStorage.setItem(DOCK_ORDER_KEY, JSON.stringify(ids)); } catch {}
+}
+function orderedTools(tools) {                          // apply the saved manual order; new tools fall to the end
+  const order = loadDockOrder(); if (!order.length) return tools;
+  const rank = (id) => { const i = order.indexOf(id); return i < 0 ? 1e9 : i; };
+  return [...tools].sort((a, b) => rank(a.id) - rank(b.id));
+}
 function renderDock(tools) {
-  const dock = $('#dock'), visible = dockExpanded ? tools : tools.slice(0, 7);
-  let html = visible.map((t) => { const hasFolder = t.actions.includes('folder') && primaryAction(t) !== 'folder';
-    return `<button class="pill" data-id="${esc(t.id)}" data-action="${primaryAction(t)}" title="${esc(t.name)}">${esc(t.name)}${hasFolder ? `<span class="home" data-folder="1" title="Open folder">${icon('folder')}</span>` : ''}</button>`; }).join('');
-  if (!dockExpanded && tools.length > 7) html += `<button class="pill more" data-more="1">+${tools.length - 7}</button>`;
-  if (dockExpanded && tools.length > 7) html += `<button class="pill more" data-more="0">less</button>`;
-  html += `<button class="pill add" id="dock-add" title="Add a tool">${icon('plus')}</button>`;
+  const dock = $('#dock');
+  let html = orderedTools(tools).map((t) =>
+    `<button class="pill" draggable="true" data-id="${esc(t.id)}" data-action="${primaryAction(t)}" title="${esc(t.name)} — click to launch, drag to reorder">${esc(t.name)}</button>`).join('');
+  html += `<button class="pill add" id="dock-add" title="Add a project">${icon('plus')}</button>`;
   dock.innerHTML = html;
 }
+function dockDragAfter(x) {                             // the chip whose left-half the cursor is before
+  const pills = [...$('#dock').querySelectorAll('.pill:not(.add):not(.dragging)')];
+  for (const p of pills) { const r = p.getBoundingClientRect(); if (x < r.left + r.width / 2) return p; }
+  return null;
+}
 function dockInit() {
-  $('#dock').addEventListener('click', async (e) => {
+  const dock = $('#dock');
+  dock.addEventListener('click', (e) => {
     if (e.target.closest('#dock-add')) { $('#tool-add').classList.toggle('hidden'); if (!$('#tool-add').classList.contains('hidden')) $('#tool-name').focus(); return; }
-    const more = e.target.closest('[data-more]'); if (more) { dockExpanded = more.dataset.more === '1'; renderDock(dockTools); return; }
-    const home = e.target.closest('[data-folder]'); const pill = e.target.closest('.pill');
-    if (!pill || pill.classList.contains('add') || pill.classList.contains('more')) return;
-    launchTool(pill.dataset.id, home ? 'folder' : pill.dataset.action);
+    const pill = e.target.closest('.pill'); if (!pill || pill.classList.contains('add')) return;
+    if (Date.now() - dockDragEnd < 250) return;        // swallow the click that can trail a drag
+    launchTool(pill.dataset.id, pill.dataset.action);
   });
+  // drag-to-reorder
+  let dragging = null;
+  dock.addEventListener('dragstart', (e) => {
+    const p = e.target.closest('.pill:not(.add)'); if (!p) return;
+    dragging = p; p.classList.add('dragging');
+    if (e.dataTransfer) { e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', p.dataset.id); } catch {} }
+  });
+  dock.addEventListener('dragover', (e) => {
+    if (!dragging) return; e.preventDefault();
+    const after = dockDragAfter(e.clientX);
+    dock.insertBefore(dragging, after || $('#dock-add'));
+  });
+  dock.addEventListener('drop', (e) => { if (dragging) e.preventDefault(); });
+  dock.addEventListener('dragend', () => { if (!dragging) return; dragging.classList.remove('dragging'); dragging = null; dockDragEnd = Date.now(); saveDockOrder(); });
   $('#tool-add-form').addEventListener('submit', async (e) => {
     e.preventDefault(); const name = $('#tool-name').value.trim(), target = $('#tool-target').value.trim(); if (!name || !target) return;
     await fetch('/api/tools', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, target }) });
@@ -495,7 +526,7 @@ function markStations() {
 function playStation(bank, i) {
   const audio = $('#radio-audio'), s = RADIO[bank] && RADIO[bank][i];
   if (!s) return;
-  clearSpotify();
+  clearSpotify(); clearYouTube();
   if (curBank === bank && curStation === i && !audio.paused) { audio.pause(); return; }
   curBank = bank; curStation = i;
   audio.src = s.url;
@@ -505,14 +536,19 @@ function playStation(bank, i) {
 }
 function radioToggle() {
   const audio = $('#radio-audio');
-  if (curBank === null) { playStation(cfg.radioBank === 'old' ? 'old' : 'lofi', cfg.radioStation || 0); return; }
+  // Nothing chosen yet: only auto-start an actual radio bank. "Silence" (off) and
+  // Spotify defaults shouldn't force lo-fi on the first play press.
+  if (curBank === null) {
+    if (cfg.radioBank === 'lofi' || cfg.radioBank === 'old') playStation(cfg.radioBank, cfg.radioStation || 0);
+    return;
+  }
   if (audio.paused) audio.play().catch(() => toast('Stream unavailable')); else audio.pause();
 }
 function setRadioState(playing, label) {
   $('#player').classList.toggle('playing', playing);
   $('#pl-state').innerHTML = icon('note');
   if (label) $('#pl-now').textContent = label;
-  else if (!playing && !spotifyActive) $('#pl-now').textContent = 'Music';
+  else if (!playing && !spotifyActive && !youtubeActive) $('#pl-now').textContent = 'Music';
   $('#radio-play').innerHTML = playing ? icon('pause') : icon('play');
 }
 function radioInit() {
@@ -547,6 +583,7 @@ function parseSpotify(url) {
 }
 function loadSpotifyEmbed(type, id, label) {
   $('#radio-audio').pause();
+  clearYouTube();
   spotifyActive = true;
   $('#sp-embed').innerHTML = `<iframe src="https://open.spotify.com/embed/${type}/${id}?utm_source=oasis" height="152" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy"></iframe>`;
   setRadioState(true, 'Spotify' + (label ? ' · ' + label : ''));
@@ -599,7 +636,7 @@ async function spotifyHandleRedirect() {
     if (!tok.access_token) { toast('Spotify connect failed'); return; }
     sessionStorage.setItem('sp_token', tok.access_token);
     $('#player').classList.remove('collapsed');
-    spotifySwitchTab('spotify');
+    switchPlayerTab('spotify');
     loadMyPlaylists(tok.access_token);
   } catch { toast('Spotify connect failed'); }
   finally { sessionStorage.removeItem('sp_verifier'); }
@@ -613,15 +650,95 @@ async function loadMyPlaylists(token) {
     $('#sp-playlists').onclick = (e) => { const b = e.target.closest('.pl-item'); if (b) loadSpotifyEmbed('playlist', b.dataset.id, b.dataset.name); };
   } catch { toast('Could not load playlists'); }
 }
-function spotifySwitchTab(src) {
+/* ================= youtube (paste a link or save your own) ================= */
+// Plays YouTube audio via a privacy-mode (youtube-nocookie) embed — same shape
+// as the Spotify tab. "Your YouTube" is your own saved playlists/mixes, kept in
+// config (local-first; no Google sign-in or API key to set up).
+const YT_PRESETS = [
+  { name: 'Lofi hip hop radio', url: 'https://www.youtube.com/watch?v=jfKfPfyJRdk' },
+  { name: 'Synthwave radio', url: 'https://www.youtube.com/watch?v=4xDzrJKXOOY' },
+  { name: 'Chillhop radio', url: 'https://www.youtube.com/watch?v=5yx6BWlEVcY' },
+];
+let youtubeActive = false, lastYt = null;
+function parseYouTube(raw) {
+  const url = (raw || '').trim();
+  if (!url) return null;
+  const vid = (url.match(/(?:youtu\.be\/|[?&]v=|\/embed\/|\/shorts\/|\/live\/)([A-Za-z0-9_-]{11})/) || [])[1];
+  const list = (url.match(/[?&]list=([A-Za-z0-9_-]+)/) || [])[1];
+  if (vid) return { kind: 'video', id: vid, list: list || '' };
+  if (list) return { kind: 'playlist', id: list, list };
+  if (/^[A-Za-z0-9_-]{11}$/.test(url)) return { kind: 'video', id: url, list: '' };
+  if (/^(PL|UU|LL|FL|OL|RD)[A-Za-z0-9_-]{10,}$/.test(url)) return { kind: 'playlist', id: url, list: url };
+  return null;
+}
+function ytEmbedSrc(p) {
+  const base = 'https://www.youtube-nocookie.com/embed/', common = 'autoplay=1&rel=0&modestbranding=1';
+  if (p.kind === 'playlist') return `${base}videoseries?${common}&list=${encodeURIComponent(p.id)}`;
+  return `${base}${encodeURIComponent(p.id)}?${common}${p.list ? '&list=' + encodeURIComponent(p.list) : ''}`;
+}
+function ytLabel(p) { return p.kind === 'playlist' ? 'Playlist · ' + p.id.slice(0, 10) + '…' : 'Video · ' + p.id; }
+function loadYouTube(p, url, name) {
+  $('#radio-audio').pause();
+  clearSpotify();
+  youtubeActive = true;
+  lastYt = { url: url || '', name: name || '' };
+  $('#yt-embed').innerHTML = `<iframe src="${ytEmbedSrc(p)}" allow="autoplay; encrypted-media; picture-in-picture" allowfullscreen loading="lazy"></iframe>`;
+  setRadioState(true, 'YouTube' + (name ? ' · ' + name : ''));
+}
+function playYouTubeUrl(url, name) {
+  const p = parseYouTube(url);
+  if (!p) { toast('Not a YouTube link'); return false; }
+  loadYouTube(p, url, name || ytLabel(p));
+  return true;
+}
+function clearYouTube() { if (youtubeActive) { $('#yt-embed').innerHTML = ''; youtubeActive = false; } }
+function renderYtSaved() {
+  const saved = Array.isArray(cfg.ytSaved) ? cfg.ytSaved : [];
+  $('#yt-saved').innerHTML = saved.map((s) =>
+    `<span class="yt-chip"><button class="yt-play" data-url="${esc(s.url)}" data-name="${esc(s.name || '')}">${esc(s.name || s.url)}</button><button class="yt-del" data-url="${esc(s.url)}" title="Remove">×</button></span>`).join('');
+  $('#yt-saved-empty').style.display = saved.length ? 'none' : '';
+}
+async function saveYtConfig(list) {
+  cfg.ytSaved = list;
+  renderYtSaved();
+  try { await fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ytSaved: list }) }); }
+  catch { toast('Could not save'); }
+}
+function youtubeInit() {
+  $('#yt-presets').innerHTML = YT_PRESETS.map((p) =>
+    `<button class="station" data-url="${esc(p.url)}" data-name="${esc(p.name)}"><span class="st-name">${esc(p.name)}</span></button>`).join('');
+  $('#yt-presets').addEventListener('click', (e) => { const b = e.target.closest('.station'); if (b) playYouTubeUrl(b.dataset.url, b.dataset.name); });
+  $('#yt-load').addEventListener('click', () => { if (playYouTubeUrl($('#yt-url').value)) $('#yt-url').value = ''; });
+  $('#yt-url').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#yt-load').click(); });
+  $('#yt-save').addEventListener('click', () => {
+    const raw = $('#yt-url').value.trim() || (lastYt && lastYt.url) || '';
+    const p = parseYouTube(raw);
+    if (!p) { toast(raw ? 'Not a YouTube link' : 'Play something first'); return; }
+    const name = (lastYt && lastYt.url === raw && lastYt.name) ? lastYt.name : ytLabel(p);
+    const list = (Array.isArray(cfg.ytSaved) ? cfg.ytSaved : []).filter((s) => s.url !== raw);
+    list.unshift({ name, url: raw });
+    saveYtConfig(list.slice(0, 24));
+    $('#yt-url').value = '';
+    toast('Saved to Your YouTube');
+  });
+  $('#yt-saved').addEventListener('click', (e) => {
+    const del = e.target.closest('.yt-del');
+    if (del) return saveYtConfig((Array.isArray(cfg.ytSaved) ? cfg.ytSaved : []).filter((s) => s.url !== del.dataset.url));
+    const play = e.target.closest('.yt-play');
+    if (play) playYouTubeUrl(play.dataset.url, play.dataset.name);
+  });
+  renderYtSaved();
+}
+
+function switchPlayerTab(src) {
   $('#player').dataset.tab = src;
   $$('.pl-tab').forEach((t) => t.classList.toggle('active', t.dataset.src === src));
   $$('.pl-pane').forEach((p) => p.classList.toggle('active', p.dataset.pane === src));
 }
 function playerInit() {
   $('#player-toggle').addEventListener('click', () => $('#player').classList.toggle('collapsed'));
-  $$('.pl-tab').forEach((t) => t.addEventListener('click', () => spotifySwitchTab(t.dataset.src)));
-  radioInit(); spotifyInit();
+  $$('.pl-tab').forEach((t) => t.addEventListener('click', () => switchPlayerTab(t.dataset.src)));
+  radioInit(); spotifyInit(); youtubeInit();
 }
 
 /* ================= command palette ================= */
@@ -638,6 +755,7 @@ function paletteActions() {
   add('boat', 'Go to Ideas', 'view', () => { closePalette(); showTab('ideas'); $('#ideas-input').focus(); }, 'notes');
   add('grid', 'Open gallery', 'view', () => { closePalette(); openGallery(); }, 'images assets pictures');
   add('boat', 'Recent agent work', 'view', () => { closePalette(); openAgentLog(); }, 'claude codex sessions activity');
+  add('relay', 'Relay — Claude × Codex', 'orchestrate', () => { closePalette(); openRelay(); }, 'codex delegate debate two model collaborate council orchestrate stack');
   [15, 25, 50, 90].forEach((m) => add('timer', `Focus ${m} min`, 'focus', () => { closePalette(); startTimer(m); }, 'pomodoro countdown session'));
   add('timer', 'Open / hide focus timer', 'focus', () => { closePalette(); toggleTimer(); }, 'timer pomodoro session');
   ['auto', 'dawn', 'day', 'dusk', 'night'].forEach((p) => add('sun', `Scene: ${p[0].toUpperCase() + p.slice(1)}`, 'scene', () => { closePalette(); setPhaseControl(p); }, 'backdrop background time scene'));
@@ -751,7 +869,7 @@ async function finishSetup() {
   const body = {
     name: $('#su-name').value.trim(), buildDir: $('#su-builddir').value.trim(),
     showActivity: $('#su-activity').checked, defaultPhase: suSel.phase, radioBank: suSel.bank,
-    radioStation: 0, setupDone: true,
+    radioStation: cfg.radioStation || 0, setupDone: true,
   };
   try { const r = await (await fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json();
     if (r.config) cfg = { ...cfg, ...r.config }; } catch { toast('Could not save preferences'); }
@@ -776,6 +894,7 @@ function keyboardInit() {
     if (e.key === 'Escape') {
       if (anyPopOpen()) return closeAllPops();
       if (paletteOpen()) return closePalette();
+      if (relayOpen()) return closeRelay();
       if (!$('#lightbox').classList.contains('hidden')) return closeLightbox();
       if (!$('#gallery').classList.contains('hidden')) return closeGallery();
       if (!$('#tool-add').classList.contains('hidden')) return $('#tool-add').classList.add('hidden');
@@ -936,13 +1055,13 @@ const TERM_THEME = {
 };
 let termSessions = [], activeTermId = null, termSeq = 0;
 
-const TERM_GEO_KEY = 'oasis_term_geo';
-const TERM_MINW = 360, TERM_MINH = 180;
+const TERM_GEO_KEY = 'oasis_term_geo_v2';             // v2: reset everyone to the compact default once
+const TERM_MINW = 300, TERM_MINH = 170;
 let termGeoSet = false;
 const isTermOpen = () => $('#terminal-dock').classList.contains('open');
-function termDefaultGeo() {                            // opens docked across the bottom
-  const m = 16, w = Math.min(window.innerWidth - m * 2, 1180), h = 340;
-  return { left: Math.round((window.innerWidth - w) / 2), top: Math.max(m, window.innerHeight - h - 84), width: w, height: h };
+function termDefaultGeo() {                            // small + compact, tucked into the bottom-right
+  const m = 18, w = Math.min(window.innerWidth - m * 2, 540), h = Math.min(window.innerHeight - 120, 400);
+  return { left: Math.round(window.innerWidth - w - m), top: Math.max(m, window.innerHeight - h - 84), width: w, height: h };
 }
 function termClampGeo(g) {
   g.width = Math.max(TERM_MINW, Math.min(g.width, window.innerWidth - 8));
@@ -1120,11 +1239,158 @@ function terminalInit() {
   });
 }
 
+/* ================= relay: Claude × Codex orchestration ================= */
+/* A glass overlay that runs the server-side relay (POST /api/relay) and polls
+   GET /api/relay/:id, streaming each turn in as it lands. Two models pass a
+   shared transcript back and forth — Delegate (plan → build → refine →
+   synthesise) or Debate (argue → verdict). See server.js for the engine. */
+let relayMode = 'delegate', relayPollTimer = null, relayActiveId = null, relayRunning = false, lastRelaySig = '';
+
+// Mirrors relaySteps() in server.js — used only to label the in-flight turn.
+function relayPlan(mode, rounds) {
+  const s = [];
+  if (mode === 'debate') {
+    s.push({ agent: 'claude', role: 'Opening' });
+    for (let r = 0; r < rounds; r++) { s.push({ agent: 'codex', role: 'Counter' }); s.push({ agent: 'claude', role: 'Response' }); }
+    s.push({ agent: 'claude', role: 'Verdict', final: true });
+  } else {
+    s.push({ agent: 'claude', role: 'Plan' });
+    for (let r = 0; r < rounds; r++) { s.push({ agent: 'codex', role: 'Build' }); s.push({ agent: 'claude', role: 'Refine' }); }
+    s.push({ agent: 'claude', role: 'Synthesis', final: true });
+  }
+  return s;
+}
+
+const relayOpen = () => !$('#relay').classList.contains('hidden');
+function openRelay() { $('#relay').classList.remove('hidden'); setTimeout(() => $('#rl-task').focus(), 50); }
+function closeRelay() { $('#relay').classList.add('hidden'); }   // keep polling in the background if a run is live
+function stopRelayPoll() { if (relayPollTimer) { clearInterval(relayPollTimer); relayPollTimer = null; } }
+function setRelayBusy(b) {
+  const btn = $('#rl-run'); if (!btn) return;
+  btn.disabled = b; $('#relay').classList.toggle('running', b);
+  const span = btn.querySelector('span'); if (span) span.textContent = b ? 'Relaying…' : 'Run relay';
+}
+
+async function startRelay() {
+  if (relayRunning) { toast('A relay is already running'); return; }
+  const task = $('#rl-task').value.trim();
+  if (!task) { $('#rl-task').focus(); return; }
+  const rounds = parseInt($('#rl-rounds').value, 10) || 1;
+  relayRunning = true; setRelayBusy(true); lastRelaySig = '';
+  renderRelayStream({ task, mode: relayMode, rounds, status: 'running', turns: [], codexAvailable: true, _optimistic: true });
+  try {
+    const r = await fetch('/api/relay', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ task, mode: relayMode, rounds }) });
+    const data = await r.json();
+    if (!data.ok) { toast(data.error || 'Could not start relay'); relayRunning = false; setRelayBusy(false); lastRelaySig = ''; renderRelayStream(null); return; }
+    relayActiveId = data.id;
+    pollRelay();
+    relayPollTimer = setInterval(pollRelay, 1500);
+  } catch { toast("Couldn't reach the relay"); relayRunning = false; setRelayBusy(false); }
+}
+
+async function pollRelay() {
+  if (!relayActiveId) return;
+  let job; try { job = await (await fetch('/api/relay/' + relayActiveId)).json(); } catch { return; }
+  if (!job || job.error === 'no such relay') return;
+  renderRelayStream(job);
+  if (job.status === 'done' || job.status === 'error') { stopRelayPoll(); relayRunning = false; setRelayBusy(false); }
+}
+
+function relayTurnHtml(t) {
+  const claimed = t.claimed || t.agent;                 // the intended speaker (colours stay consistent on fallback)
+  const cls = claimed === 'codex' ? 'codex' : 'claude';
+  const who = claimed === 'codex' ? 'Codex' : 'Claude';
+  const secs = t.ms ? Math.round(t.ms / 1000) + 's' : '';
+  const badge = t.fallback ? '<span class="rl-badge">Codex unavailable · Claude stood in</span>' : '';
+  const body = t.error ? `<div class="rl-err">${esc(t.text || 'no response')}</div>` : `<div class="ans-body">${md(t.text || '')}</div>`;
+  const acts = (t.final && !t.error) ? `<div class="rl-acts" data-final="${esc(t.text || '')}">
+      <button data-act="copy">${icon('copy')}Copy</button>
+      ${cfg.terminalEnabled ? `<button data-act="term">${icon('terminal')}Continue in Claude</button>` : ''}
+      <button data-act="capture">${icon('plus')}Capture idea</button></div>` : '';
+  return `<div class="rl-turn ${cls}${t.final ? ' final' : ''}">
+    <div class="rl-turn-head"><span class="rl-dot ${cls}"></span><span class="rl-who">${esc(who)}</span>
+      <span class="rl-role">${esc(t.role || '')}</span>${t.final && !t.error ? '<span class="rl-final-tag">Final</span>' : ''}
+      <span class="rl-time">${esc(secs)}</span>${badge}</div>
+    ${body}${acts}</div>`;
+}
+
+function renderRelayStream(job) {
+  const box = $('#rl-stream');
+  if (!job) { lastRelaySig = ''; box.innerHTML = ''; box.dataset.task = ''; return; }
+  const turns = job.turns || [];
+  const sig = `${job._optimistic ? 'opt' : job.status}:${turns.length}:${job.codexAvailable}`;
+  if (sig === lastRelaySig) return;                     // nothing new — let the CSS ripple keep animating
+  lastRelaySig = sig;
+  box.dataset.task = job.task || '';
+  let html = '';
+  if (job.codexAvailable === false) html += '<div class="rl-note">Codex isn\'t installed, so Claude is running both sides. Install the <code>codex</code> CLI for a true two-model relay.</div>';
+  turns.forEach((t) => { html += relayTurnHtml(t); });
+  if (job.status === 'running') {
+    const next = relayPlan(job.mode, job.rounds)[turns.length];
+    const codexNext = next && next.agent === 'codex' && job.codexAvailable !== false;
+    const who = next ? (codexNext ? 'Codex' : 'Claude') : 'Claude';
+    html += `<div class="rl-turn pending ${codexNext ? 'codex' : 'claude'}">
+      <div class="rl-turn-head"><span class="rl-dot ${codexNext ? 'codex' : 'claude'}"></span><span class="rl-who">${esc(who)}</span>
+        <span class="rl-role">${esc(next ? next.role : '')}</span></div>
+      <div class="rl-thinking"><span class="ripple-dots"><i></i><i></i><i></i></span>thinking…</div></div>`;
+  }
+  if (job.status === 'error' && !turns.length) html += `<div class="rl-note err">${esc(job.error || 'relay failed')}</div>`;
+  const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 90;
+  box.innerHTML = html;
+  if (nearBottom) box.scrollTop = box.scrollHeight;
+}
+
+async function openRelayHistory() {
+  let items = []; try { items = await (await fetch('/api/relays')).json(); } catch {}
+  const box = $('#rl-stream'); lastRelaySig = '';
+  if (!items.length) { box.innerHTML = '<div class="rl-note">No past relays yet — run one above.</div>'; return; }
+  box.innerHTML = '<div class="rl-hist">' + items.map((j) => `<button class="rl-hist-item" data-view="${esc(j.id)}">
+      <span class="rl-dot ${j.mode === 'debate' ? 'codex' : 'claude'}"></span>
+      <span class="rl-hist-task">${esc(j.task)}</span>
+      <span class="rl-hist-meta">${esc(j.mode)} · ${esc(j.status)}${j.finishedAt ? ' · ' + relTime(j.finishedAt) : ''}</span>
+      <span class="rl-hist-del" data-del="${esc(j.id)}" title="Delete">${icon('trash')}</span></button>`).join('') + '</div>';
+}
+
+async function viewRelay(id) {
+  let job; try { job = await (await fetch('/api/relay/' + id)).json(); } catch { return; }
+  if (!job || job.error === 'no such relay') { toast('Relay not found'); return; }
+  lastRelaySig = ''; renderRelayStream(job);
+  if (job.status === 'running' && !relayRunning) { relayActiveId = id; relayRunning = true; setRelayBusy(true); pollRelay(); relayPollTimer = setInterval(pollRelay, 1500); }
+}
+
+function relayStreamClick(e) {
+  const del = e.target.closest('[data-del]');
+  if (del) { e.stopPropagation(); fetch('/api/relays/' + del.dataset.del, { method: 'DELETE' }).then(openRelayHistory); return; }
+  const hist = e.target.closest('[data-view]'); if (hist) { viewRelay(hist.dataset.view); return; }
+  const b = e.target.closest('.rl-acts button'); if (!b) return;
+  const final = b.closest('.rl-acts').dataset.final || '';
+  if (b.dataset.act === 'copy') copyText(final).then((ok) => toast(ok ? 'Copied' : 'Copy failed'));
+  else if (b.dataset.act === 'term') { openTerminal({ kind: 'claude', seed: ($('#rl-stream').dataset.task || '').trim(), title: 'Claude', sub: 'from relay' }); closeRelay(); }
+  else if (b.dataset.act === 'capture') { keepIdea(final.slice(0, 600), 'spark'); toast('Captured to Ideas'); }
+}
+
+function relayInit() {
+  $('#btn-relay').addEventListener('click', openRelay);
+  $('.rl-shade').addEventListener('click', closeRelay);
+  $('#relay-close').addEventListener('click', closeRelay);
+  $('#rl-history-btn').addEventListener('click', openRelayHistory);
+  $('#rl-mode').addEventListener('click', (e) => {
+    const b = e.target.closest('.rl-segbtn'); if (!b) return;
+    relayMode = b.dataset.mode;
+    $$('#rl-mode .rl-segbtn').forEach((x) => x.classList.toggle('active', x === b));
+  });
+  $('#rl-form').addEventListener('submit', (e) => { e.preventDefault(); startRelay(); });
+  $('#rl-task').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); startRelay(); } });
+  $('#rl-stream').addEventListener('click', relayStreamClick);
+}
+
 /* ================= config + boot ================= */
 async function loadConfig() {
   try { cfg = { ...cfg, ...(await (await fetch('/api/config')).json()) }; } catch {}
   $('#sp-redirect').textContent = (cfg.origin || '') + '/';
   if (cfg.spotifyClientId) $('#sp-clientid').value = cfg.spotifyClientId;
+  renderYtSaved();
+  loadTasks();                                   // re-render now that cfg.terminalEnabled is known (Hand-to-Claude button)
   setPhaseControl(cfg.defaultPhase || 'auto');
   tickClock();
   if (cfg.radioBank === 'old' || cfg.radioBank === 'lofi') {
@@ -1160,7 +1426,7 @@ function visibilityInit() {
 tickClock(); applyPhase();
 $('#sea-poster').addEventListener('error', () => document.body.classList.add('no-photo'));  // both video + poster gone → gradient
 document.addEventListener('pointerdown', seaResume, { once: true });                          // resume if autoplay was blocked
-sceneInit(); panelTabsInit(); askInit(); askHistoryInit(); ideasInit(); tasksInit(); journalInit(); galleryInit(); lightboxInit(); tickerInit(); dockInit(); playerInit(); paletteInit(); timerInit(); briefingInit(); agentLogInit(); terminalInit(); setupInit(); visibilityInit(); keyboardInit();
+sceneInit(); panelTabsInit(); askInit(); askHistoryInit(); ideasInit(); tasksInit(); journalInit(); galleryInit(); lightboxInit(); tickerInit(); dockInit(); playerInit(); paletteInit(); timerInit(); briefingInit(); agentLogInit(); terminalInit(); relayInit(); setupInit(); visibilityInit(); keyboardInit();
 loadTasks(); loadIdeas(); loadJournal(); loadTicker(); loadDock();
 loadConfig().then(spotifyHandleRedirect);
 startTimers();

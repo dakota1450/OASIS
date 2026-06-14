@@ -26,9 +26,13 @@ guard in [§ Guards](#guards-in-the-code).
 
 ## Privacy
 
-- **No telemetry. Nothing about the user leaves the machine.** The only outbound
-  traffic is (a) a user-initiated image import from an `https` URL the user pastes
-  and (b) the local `claude` CLI doing whatever it normally does.
+- **No telemetry. Nothing about the user leaves the machine.** Outbound traffic
+  happens only when the user asks for it: (a) an image import from an `https` URL
+  the user pastes, (b) the local `claude` / `codex` CLIs doing whatever they
+  normally do, and (c) the music panel — internet radio streams plus the optional
+  Spotify and YouTube integrations (Spotify embeds and the user's own Spotify
+  login, `youtube-nocookie.com` embeds for pasted/saved links). No analytics, no
+  beacons — nothing about *you* is ever sent anywhere.
 - **Personal data stays local and out of git.** `data/` (notes, todos, journal,
   ask history, briefings, config) and `assets/*` (imported images) are
   `.gitignore`d. The distributed zip ships **empty** data — `package.ps1` stages
@@ -56,6 +60,12 @@ These are load-bearing. If you change the surrounding code, keep them intact.
   `claude -p` with `{ shell: true }` and writes the prompt to `stdin`, then ends
   it. No user/model text ever reaches the command line, so quotes, `$`, backticks,
   newlines, and braces can't break out.
+- **`codex` (the relay's second model) is the same plus a sandbox.** `runCodex`
+  spawns `codex exec --sandbox read-only --skip-git-repo-check` with the prompt
+  over `stdin`. The read-only sandbox means a relay turn can reason and write text
+  but **cannot edit files or run commands** — orchestration is thinking, not
+  acting. The only thing interpolated into the command line is an internal temp
+  path for `--output-last-message` (server-generated, never user input).
 - **Custom tool targets are character-filtered.** `POST /api/tools` rejects any
   target containing `"`, `` ` ``, `$`, or a line break before it can be
   interpolated into a shell command via `osOpen`.

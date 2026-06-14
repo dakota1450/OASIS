@@ -37,6 +37,7 @@ const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
 const JOURNAL_FILE = path.join(DATA_DIR, 'journal.json');
 const ASK_HISTORY_FILE = path.join(DATA_DIR, 'ask-history.json');
 const BRIEFINGS_FILE = path.join(DATA_DIR, 'briefings.json');
+const RELAYS_FILE = path.join(DATA_DIR, 'relays.json');       // Claude×Codex orchestration runs
 
 const HOME = os.homedir();
 const CLAUDE_PROJECTS = path.join(HOME, '.claude', 'projects');
@@ -48,8 +49,8 @@ const DEFAULT_BUILD_DIR = path.join(HOME, 'Documents', 'build');
 // install working with zero configuration; the wizard only refines them.
 const CONFIG_DEFAULTS = {
   name: '', buildDir: '', showActivity: true, defaultPhase: 'auto',
-  radioBank: 'lofi', radioStation: 0, autoplay: false,
-  spotifyClientId: '', setupDone: false,
+  radioBank: 'lofi', radioStation: 0,
+  spotifyClientId: '', ytSaved: [], setupDone: false,
 };
 function getConfig() { return { ...CONFIG_DEFAULTS, ...readJson(CONFIG_FILE, {}) }; }
 function buildDir() { const c = getConfig(); return (c.buildDir && c.buildDir.trim()) ? c.buildDir.trim() : DEFAULT_BUILD_DIR; }
@@ -67,6 +68,62 @@ const ASSET_ROOTS = [CODEX_IMAGES, ASSETS_DIR];
 let pty = null;
 try { pty = require('node-pty'); } catch { pty = null; }
 const TERMINAL_ENABLED = !!pty;
+
+// Locate the Codex CLI. It frequently isn't on PATH — the OpenAI desktop install
+// tucks `codex.exe` under %LOCALAPPDATA%\OpenAI\Codex\bin — which is exactly why
+// `codex` "doesn't work" when typed in a terminal even though Codex is installed.
+// We find it once and (a) prepend its dir to spawned shells' PATH so `codex`
+// resolves in the embedded terminal, and (b) call it by full path in runCodex.
+function findCodexBin() {
+  const cands = [];
+  if (process.env.OASIS_CODEX_BIN) cands.push(process.env.OASIS_CODEX_BIN);
+  // The Codex desktop app records the exact CLI binary it currently uses in
+  // config.toml (CODEX_CLI_PATH). Prefer it: the top-level bin\codex.exe is often
+  // a STALE launcher that can't parse the newer config the app writes (e.g.
+  // `service_tier = "priority"`), so it errors out — which looks like "codex
+  // doesn't work" even though a working, newer binary sits right next to it.
+  try {
+    const cfg = fs.readFileSync(path.join(HOME, '.codex', 'config.toml'), 'utf8');
+    const m = cfg.match(/CODEX_CLI_PATH\s*=\s*['"]([^'"]+)['"]/);
+    if (m && m[1]) cands.push(m[1]);
+  } catch {}
+  if (IS_WIN) {
+    const base = process.env.LOCALAPPDATA && path.join(process.env.LOCALAPPDATA, 'OpenAI', 'Codex', 'bin');
+    if (base) {
+      // versioned subdirs (…\bin\<hash>\codex.exe), newest first, then the top-level launcher
+      try {
+        fs.readdirSync(base, { withFileTypes: true })
+          .filter((d) => d.isDirectory())
+          .map((d) => ({ p: path.join(base, d.name, 'codex.exe'), m: (() => { try { return fs.statSync(path.join(base, d.name)).mtimeMs; } catch { return 0; } })() }))
+          .sort((a, b) => b.m - a.m)
+          .forEach((x) => cands.push(x.p));
+      } catch {}
+      cands.push(path.join(base, 'codex.exe'));
+    }
+    if (process.env.APPDATA) cands.push(path.join(process.env.APPDATA, 'npm', 'codex.cmd'));
+    cands.push(path.join(HOME, '.cargo', 'bin', 'codex.exe'));
+  } else {
+    cands.push(path.join(HOME, '.codex', 'bin', 'codex'));
+    cands.push('/usr/local/bin/codex', '/opt/homebrew/bin/codex');
+    cands.push(path.join(HOME, '.local', 'bin', 'codex'), path.join(HOME, '.cargo', 'bin', 'codex'));
+    if (IS_MAC) cands.push(path.join(HOME, 'Library', 'Application Support', 'Codex', 'bin', 'codex'));
+  }
+  for (const c of cands) { try { if (c && fs.existsSync(c)) return c; } catch {} }
+  return null;
+}
+const CODEX_BIN = findCodexBin();
+
+// Env for spawned shells/CLIs with our known tool dirs prepended to PATH, so
+// `codex` (and friends) resolve even when the user's PATH doesn't include them.
+function shellEnv() {
+  const env = { ...process.env };
+  const dirs = [];
+  if (CODEX_BIN) dirs.push(path.dirname(CODEX_BIN));
+  if (!dirs.length) return env;
+  const key = Object.keys(env).find((k) => k.toLowerCase() === 'path') || 'PATH';
+  env[key] = dirs.join(path.delimiter) + path.delimiter + (env[key] || '');
+  return env;
+}
 // Per-boot secret the page must echo on the WebSocket handshake. WebSockets are
 // NOT subject to CORS, so a malicious page could otherwise open ws://127.0.0.1
 // and spawn a shell. A cross-origin page can't read this token (same-origin
@@ -103,6 +160,7 @@ function ensureFiles() {
   if (!fs.existsSync(JOURNAL_FILE)) fs.writeFileSync(JOURNAL_FILE, '[]');
   if (!fs.existsSync(ASK_HISTORY_FILE)) fs.writeFileSync(ASK_HISTORY_FILE, '[]');
   if (!fs.existsSync(BRIEFINGS_FILE)) fs.writeFileSync(BRIEFINGS_FILE, '{}');
+  if (!fs.existsSync(RELAYS_FILE)) fs.writeFileSync(RELAYS_FILE, '[]');
   if (!fs.existsSync(CONFIG_FILE)) fs.writeFileSync(CONFIG_FILE, '{}');
 }
 
@@ -290,7 +348,7 @@ function scanTools() {
     if (entries.includes('package.json')) {
       const pkg = readJson(path.join(dir, 'package.json'), {});
       if (pkg.scripts && pkg.scripts.dev) hasDev = true;
-      if (pkg.oasisName || pkg.meadowName) displayName = pkg.oasisName || pkg.meadowName;
+      if (pkg.oasisName) displayName = pkg.oasisName;
     }
     let mtime = 0; try { mtime = fs.statSync(dir).mtimeMs; } catch {}
     const actions = [];
@@ -386,6 +444,67 @@ function runClaude(prompt) {
     child.on('error', (e) => { if (!done) { done = true; clearTimeout(timer); resolve({ ok: false, error: 'could not run claude: ' + e.message }); } });
     child.on('close', () => { if (!done) { done = true; clearTimeout(timer); resolve({ ok: true, text: out, stderr: err }); } });
     try { child.stdin.write(prompt); child.stdin.end(); } catch {}
+  });
+}
+
+// One model process at a time. Ask/Spark/briefing flip `sparkBusy` and 429 a
+// collision outright; the relay (which fires many calls in a row) instead waits
+// politely for the flag to clear, then claims it for the duration of one call.
+// Shared lock = a Claude turn and a Codex turn can never run concurrently
+// (concurrent CLI invocations are slow and racy — see AGENTS.md §9).
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+async function aiAcquire() {
+  let waited = 0;
+  // Wait past the longest single CLI turn (codex: 300s) so a slow turn can never
+  // release us early into a second concurrent invocation — the one-at-a-time invariant.
+  while (sparkBusy) { await sleep(200); waited += 200; if (waited > 310000) break; }
+  sparkBusy = true;
+}
+function aiRelease() { sparkBusy = false; }
+
+// Run the local `codex` CLI non-interactively, mirroring runClaude. Prompt goes
+// over STDIN (codex exec reads it there when no positional prompt is given), so
+// quotes/newlines/braces never touch the command line. We pin a READ-ONLY
+// sandbox so an orchestration "thinking" turn can never edit files or run
+// commands, and capture only the final assistant message via
+// --output-last-message (a temp file → no fragile stdout-log parsing). Codex may
+// not be installed; callers detect that up front with probeCodex().
+const CODEX_ARGS = 'exec --sandbox read-only --skip-git-repo-check --color never';
+function runCodex(prompt) {
+  return new Promise((resolve) => {
+    const outFile = path.join(os.tmpdir(), 'oasis-codex-' + newId() + '.txt');
+    let out = '', err = '', done = false;
+    const bin = CODEX_BIN ? `"${CODEX_BIN}"` : 'codex';
+    const child = spawn(`${bin} ${CODEX_ARGS} --output-last-message "${outFile}"`, { shell: true, stdio: ['pipe', 'pipe', 'pipe'], env: shellEnv() });
+    const finish = (res) => { if (done) return; done = true; clearTimeout(timer); try { fs.unlinkSync(outFile); } catch {} resolve(res); };
+    const timer = setTimeout(() => { try { child.kill(); } catch {} finish({ ok: false, error: 'codex timed out' }); }, 300000);
+    child.stdout.on('data', (d) => (out += d));
+    child.stderr.on('data', (d) => (err += d));
+    child.on('error', (e) => finish({ ok: false, error: 'could not run codex: ' + e.message }));
+    child.on('close', () => {
+      let text = '';
+      try { text = fs.readFileSync(outFile, 'utf8').trim(); } catch {}
+      if (!text) text = (out || '').trim();                 // fallback if the flag is unsupported
+      if (!text) return finish({ ok: false, error: (err || '').trim().split('\n')[0] || 'codex returned nothing' });
+      finish({ ok: true, text });
+    });
+    try { child.stdin.write(prompt); child.stdin.end(); } catch {}
+  });
+}
+
+// Is `codex` on PATH? Probe once and cache — the relay falls back to a
+// Claude-only run (Claude wears both hats) when it isn't, and says so honestly.
+let codexAvail = null;
+function probeCodex() {
+  if (codexAvail !== null) return Promise.resolve(codexAvail);
+  if (CODEX_BIN) { codexAvail = true; return Promise.resolve(true); }   // found on disk → trust it
+  return new Promise((resolve) => {
+    let done = false;
+    const fin = (v) => { if (!done) { done = true; codexAvail = v; resolve(v); } };
+    let child; try { child = spawn('codex --version', { shell: true, stdio: 'ignore', env: shellEnv() }); } catch { return fin(false); }
+    const t = setTimeout(() => { try { child.kill(); } catch {} fin(false); }, 6000);
+    child.on('error', () => { clearTimeout(t); fin(false); });
+    child.on('close', (code) => { clearTimeout(t); fin(code === 0); });
   });
 }
 
@@ -493,6 +612,194 @@ Signals to draw on (use only what's notable, don't list them): ${stats.done} tas
     if (insight) { const c = readJson(BRIEFINGS_FILE, {}); c[key] = { insight, stats, generatedAt: new Date().toISOString() }; writeJson(BRIEFINGS_FILE, c); }
     sendJson(res, 200, { ok: true, date: key, insight, stats });
   }).catch(() => { sparkBusy = false; sendJson(res, 200, { ok: true, date: key, insight: '', stats }); });
+}
+
+// ---------- relay: Claude × Codex orchestration ----------
+// Two models, passed a shared transcript, take turns to plan → build/critique →
+// refine → synthesise (or debate → verdict). The point is to beat a single
+// model: each turn sees what the other said and is told to disagree when it
+// genuinely thinks the partner is wrong, so mistakes get caught. A relay fires
+// many CLI calls in a row, so it runs as a background job — POST starts it and
+// returns an id; the page polls GET /api/relay/:id for turns as they land.
+
+let relayBusy = false;
+const RELAY_JOBS = new Map();                 // id -> live job object (mutated in place)
+
+function relayPersist(job) {
+  const all = readJson(RELAYS_FILE, []);
+  const i = all.findIndex((j) => j.id === job.id);
+  if (i >= 0) all[i] = job; else all.unshift(job);
+  writeJson(RELAYS_FILE, all.slice(0, 20));
+}
+function relayGet(id) { return RELAY_JOBS.get(id) || readJson(RELAYS_FILE, []).find((j) => j.id === id) || null; }
+
+// Render the conversation so far for the next model's prompt. Labels are
+// mode-aware; an errored turn is surfaced so the partner can route around it.
+function relayTranscript(job) {
+  if (!job.turns.length) return '(nothing yet — you open)';
+  const label = (t) => {
+    if (t.agent === 'codex') return 'CODEX';
+    if (t.claimed === 'codex') return job.mode === 'debate' ? 'CHALLENGER (Claude)' : 'CRITIC (Claude)';
+    return job.mode === 'debate' ? 'CLAUDE' : 'ARCHITECT (Claude)';
+  };
+  return job.turns.map((t) => {
+    const body = t.error ? `(this turn failed: ${t.text})` : t.text;
+    return `━━━━━ ${label(t)} · ${t.role} ━━━━━\n${body}`;
+  }).join('\n\n');
+}
+
+// --- prompt builders (one per step kind) ---
+const RP = {
+  plan: (j) => `You are ARCHITECT, one half of a two-model engineering relay inside a local tool called Oasis. Your partner is CODEX — a sharp, independent coding model who will scrutinise your work, catch your mistakes, and build on it. Together you should beat what either of you could do alone.
+Open the relay: turn the user's request into a crisp, concrete plan of attack.
+
+USER REQUEST:
+${j.task}
+
+Give the approach in 1–2 sentences, the key steps, the main risks or unknowns, and what "done" looks like. Be specific and decisive — no hedging, no filler, no restating the request. Tight markdown.`,
+
+  build: (j) => `You are CODEX, the implementer-critic in a two-model relay inside Oasis. Your partner is ARCHITECT (Claude). Read the exchange so far and PUSH THE WORK FORWARD: name concrete flaws, gaps, or wrong assumptions in the latest plan, fix them, and add the implementation detail — real code, commands, edge cases — that would make it actually work. Disagree when you genuinely think Architect is wrong; catching each other's mistakes is the entire point.
+
+USER REQUEST:
+${j.task}
+
+CONVERSATION SO FAR:
+${relayTranscript(j)}
+
+Respond as CODEX. Be concrete and critical — improve on what's there, don't restate it.`,
+
+  refine: (j) => `You are ARCHITECT (Claude) in a two-model relay with CODEX. Read CODEX's latest response. Where Codex is right, fold it in and say so; where Codex is wrong or missed something, push back and correct it. Converge toward one coherent, stronger approach — don't just agree to agree.
+
+USER REQUEST:
+${j.task}
+
+CONVERSATION SO FAR:
+${relayTranscript(j)}
+
+Respond as ARCHITECT.`,
+
+  synth: (j) => `You are closing out a two-model relay between ARCHITECT (Claude) and CODEX. Synthesise the WHOLE exchange into the single best, final answer to the user's request. Resolve any disagreement decisively, keep what both models got right, drop the dead ends. Do not mention the relay, the roles, or the process — just deliver the strongest possible answer, ready to act on.
+
+USER REQUEST:
+${j.task}
+
+FULL CONVERSATION:
+${relayTranscript(j)}
+
+Write the final answer in clean markdown.`,
+
+  open: (j) => `You are CLAUDE in a two-model debate inside Oasis, against CODEX. The debate exists to stress-test the answer so the user gets the truth, not a comfortable consensus.
+Stake out your position on the user's question and argue it as well as you can.
+
+USER QUESTION:
+${j.task}
+
+Give your answer and your strongest reasoning. Be specific and committed.`,
+
+  counter: (j) => `You are CODEX in a two-model debate inside Oasis, against CLAUDE. Read what Claude argued, then take the strongest OPPOSING or alternative position you honestly can and make the case for it — expose weak assumptions, missing trade-offs, or better options. If Claude is simply right about something, name it, then attack the weakest remaining point. Don't roll over; the debate only helps if it's adversarial.
+
+USER QUESTION:
+${j.task}
+
+CONVERSATION SO FAR:
+${relayTranscript(j)}
+
+Respond as CODEX.`,
+
+  respond: (j) => `You are CLAUDE, continuing the debate with CODEX. Defend what holds up, concede what doesn't, and sharpen your position in light of Codex's challenge. Move toward the truth, not toward winning.
+
+USER QUESTION:
+${j.task}
+
+CONVERSATION SO FAR:
+${relayTranscript(j)}
+
+Respond as CLAUDE.`,
+
+  verdict: (j) => `Step out of both roles. You are now a neutral judge closing a debate between CLAUDE and CODEX. Weigh the whole exchange and deliver the verdict the user should walk away with: the best-supported answer, what each side got right, and where real uncertainty remains. Be decisive and honest. Don't narrate "the debate" — just give the clearest possible bottom line.
+
+USER QUESTION:
+${j.task}
+
+FULL DEBATE:
+${relayTranscript(j)}
+
+Write the verdict in clean markdown.`,
+};
+
+const RELAY_STEPS = {
+  plan:    { agent: 'claude', role: 'Plan',      critical: true,  prompt: RP.plan },
+  build:   { agent: 'codex',  role: 'Build',     critical: false, prompt: RP.build },
+  refine:  { agent: 'claude', role: 'Refine',    critical: false, prompt: RP.refine },
+  synth:   { agent: 'claude', role: 'Synthesis', critical: false, prompt: RP.synth, final: true },
+  open:    { agent: 'claude', role: 'Opening',   critical: true,  prompt: RP.open },
+  counter: { agent: 'codex',  role: 'Counter',   critical: false, prompt: RP.counter },
+  respond: { agent: 'claude', role: 'Response',  critical: false, prompt: RP.respond },
+  verdict: { agent: 'claude', role: 'Verdict',   critical: false, prompt: RP.verdict, final: true },
+};
+
+function relaySteps(mode, rounds) {
+  const s = [];
+  if (mode === 'debate') {
+    s.push(RELAY_STEPS.open);
+    for (let r = 0; r < rounds; r++) { s.push(RELAY_STEPS.counter); s.push(RELAY_STEPS.respond); }
+    s.push(RELAY_STEPS.verdict);
+  } else {
+    s.push(RELAY_STEPS.plan);
+    for (let r = 0; r < rounds; r++) { s.push(RELAY_STEPS.build); s.push(RELAY_STEPS.refine); }
+    s.push(RELAY_STEPS.synth);
+  }
+  return s;
+}
+
+// Serialise each model call through the shared AI lock (one process at a time).
+async function relayAgentRun(agent, prompt) {
+  await aiAcquire();
+  try { return agent === 'codex' ? await runCodex(prompt) : await runClaude(prompt); }
+  finally { aiRelease(); }
+}
+
+async function runRelay(job) {
+  for (const step of relaySteps(job.mode, job.rounds)) {
+    // A Codex step runs as Claude (clearly flagged) when codex isn't installed.
+    const fallback = step.agent === 'codex' && !job.codexAvailable;
+    const agent = fallback ? 'claude' : step.agent;
+    const t0 = Date.now();
+    const res = await relayAgentRun(agent, step.prompt(job));
+    const turn = {
+      agent, claimed: step.agent, role: step.role, final: !!step.final, fallback,
+      at: new Date().toISOString(), ms: Date.now() - t0,
+    };
+    if (res.ok && (res.text || '').trim()) turn.text = res.text.trim();
+    else { turn.text = res.error || 'no response'; turn.error = true; }
+    job.turns.push(turn);
+    relayPersist(job);
+    if (turn.error && step.critical) { job.status = 'error'; job.error = turn.text; break; }
+  }
+  if (job.status !== 'error') job.status = 'done';
+  job.finishedAt = new Date().toISOString();
+  relayPersist(job);
+}
+
+async function handleRelay(req, res) {
+  if (relayBusy) return sendJson(res, 429, { ok: false, error: 'a relay is already running' });
+  const body = await readBody(req);
+  const task = (typeof body.task === 'string' ? body.task : '').trim();
+  if (!task) return sendJson(res, 400, { ok: false, error: 'describe the task first' });
+  if (task.length > 6000) return sendJson(res, 400, { ok: false, error: 'task is too long (6000 char max)' });
+  const mode = body.mode === 'debate' ? 'debate' : 'delegate';
+  const rounds = Math.min(3, Math.max(1, parseInt(body.rounds, 10) || 1));
+  relayBusy = true;
+  let codexAvailable = false;
+  try { codexAvailable = await probeCodex(); } catch {}
+  const job = { id: newId(), task, mode, rounds, codexAvailable, status: 'running', turns: [], startedAt: new Date().toISOString() };
+  if (RELAY_JOBS.size > 30) { const oldest = RELAY_JOBS.keys().next().value; RELAY_JOBS.delete(oldest); }
+  RELAY_JOBS.set(job.id, job);
+  relayPersist(job);
+  runRelay(job)
+    .catch((e) => { job.status = 'error'; job.error = String((e && e.message) || e); job.finishedAt = new Date().toISOString(); relayPersist(job); })
+    .finally(() => { relayBusy = false; });
+  return sendJson(res, 200, { ok: true, id: job.id, mode, rounds, codexAvailable });
 }
 
 // ---------- assets (the darkroom) ----------
@@ -656,7 +963,7 @@ function handleUpgrade(req, socket, head) {
   let term;
   try {
     term = pty.spawn(defaultShell(), [], {
-      name: 'xterm-color', cols: 80, rows: 24, cwd, env: process.env,
+      name: 'xterm-color', cols: 80, rows: 24, cwd, env: shellEnv(),
     });
   } catch (e) {
     try { socket.write(wsFrame(JSON.stringify({ t: 'o', d: `\r\n[oasis] could not start terminal: ${e.message}\r\n` }))); } catch {}
@@ -742,6 +1049,26 @@ async function handleApi(req, res, url) {
   if (url.pathname === '/api/spark' && req.method === 'POST') return handleSpark(req, res);
   if (url.pathname === '/api/sparks' && req.method === 'GET') {
     return sendJson(res, 200, readJson(SPARKS_FILE, []).slice(0, 20));
+  }
+
+  // relay — Claude × Codex orchestration (background job + polling)
+  if (url.pathname === '/api/relay' && req.method === 'POST') return handleRelay(req, res);
+  if (seg[0] === 'api' && seg[1] === 'relay' && seg[2] && req.method === 'GET') {
+    const job = relayGet(seg[2]);
+    return job ? sendJson(res, 200, job) : sendJson(res, 404, { error: 'no such relay' });
+  }
+  if (url.pathname === '/api/relays' && req.method === 'GET') {
+    const items = readJson(RELAYS_FILE, []).map((j) => ({
+      id: j.id, task: j.task, mode: j.mode, rounds: j.rounds, status: j.status,
+      codexAvailable: j.codexAvailable, turns: (j.turns || []).length,
+      startedAt: j.startedAt, finishedAt: j.finishedAt || null,
+    }));
+    return sendJson(res, 200, items);
+  }
+  if (seg[0] === 'api' && seg[1] === 'relays' && seg[2] && req.method === 'DELETE') {
+    RELAY_JOBS.delete(seg[2]);
+    writeJson(RELAYS_FILE, readJson(RELAYS_FILE, []).filter((j) => j.id !== seg[2]));
+    return sendJson(res, 200, { ok: true });
   }
 
   // assets
@@ -839,10 +1166,17 @@ async function handleApi(req, res, url) {
     const str = (k) => { if (typeof body[k] === 'string') cfg[k] = body[k].trim(); };
     str('name'); str('buildDir'); str('spotifyClientId');
     if (['auto', 'dawn', 'day', 'dusk', 'night'].includes(body.defaultPhase)) cfg.defaultPhase = body.defaultPhase;
-    if (['lofi', 'old', 'spotify', 'off'].includes(body.radioBank)) cfg.radioBank = body.radioBank;
+    if (['lofi', 'old', 'off'].includes(body.radioBank)) cfg.radioBank = body.radioBank;
     if (Number.isInteger(body.radioStation)) cfg.radioStation = body.radioStation;
     if (typeof body.showActivity === 'boolean') cfg.showActivity = body.showActivity;
-    if (typeof body.autoplay === 'boolean') cfg.autoplay = body.autoplay;
+    // Saved YouTube playlists/mixes ("Your YouTube"). Re-validated client-side
+    // (parseYouTube) before they ever become an iframe src; never shell-touched.
+    if (Array.isArray(body.ytSaved)) {
+      cfg.ytSaved = body.ytSaved
+        .filter((x) => x && typeof x.url === 'string' && x.url.trim())
+        .slice(0, 24)
+        .map((x) => ({ name: String(x.name || '').slice(0, 80), url: x.url.trim().slice(0, 400) }));
+    }
     if (typeof body.setupDone === 'boolean') cfg.setupDone = body.setupDone;
     writeJson(CONFIG_FILE, cfg);
     return sendJson(res, 200, { ok: true, config: { ...CONFIG_DEFAULTS, ...cfg } });
@@ -929,4 +1263,5 @@ server.on('error', (e) => {
 server.listen(PORT, '127.0.0.1', () => {
   console.log(`Oasis is open at http://localhost:${PORT}`);
   console.log(TERMINAL_ENABLED ? 'Terminal: enabled (node-pty loaded)' : 'Terminal: disabled (node-pty not installed)');
+  console.log(CODEX_BIN ? `Codex CLI: ${CODEX_BIN} (added to terminal PATH)` : 'Codex CLI: relying on PATH (set OASIS_CODEX_BIN if `codex` is elsewhere)');
 });

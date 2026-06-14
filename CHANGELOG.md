@@ -8,6 +8,26 @@ the first tag.
 ## [Unreleased]
 
 ### Added
+- **YouTube in the music panel.** A new **YouTube** tab alongside Lo-Fi, Ambient,
+  and Spotify. Paste any YouTube video, playlist, or mix link (also `youtu.be`,
+  `music.youtube.com`, `/shorts`, `/live`, or a bare id) and it plays the audio
+  through YouTube's privacy-mode `youtube-nocookie.com` embed. A few lo-fi/ambient
+  presets are built in, and **Save current** keeps your own playlists and mixes
+  under **Your YouTube** — persisted locally in `config.json` (`ytSaved`), with no
+  Google sign-in or API key. Starting another source (radio/Spotify) stops it, and
+  vice-versa, so only one thing ever plays.
+- **Relay — Claude × Codex orchestration.** A new glass overlay (toolbar relay
+  button, or the command palette) where the two models work a task together
+  instead of one model working it alone. Two modes: **Delegate** (Claude
+  architects → Codex builds & critiques → Claude refines → a clean synthesis) and
+  **Debate** (the two argue opposing positions, then a neutral verdict). Each turn
+  sees the running transcript and is told to disagree when it thinks the partner
+  is wrong, so mistakes get caught. Pick 1–3 rounds; turns stream in live as each
+  model responds; the final answer can be copied, captured as an idea, or handed
+  to a live Claude terminal. Codex runs in a **read-only sandbox** with the prompt
+  over stdin; if the `codex` CLI isn't installed, Claude runs both sides and the
+  panel says so. Backed by a background job engine (`POST /api/relay`, polled via
+  `GET /api/relay/:id`); runs are kept in `data/relays.json`.
 - **Built-in terminal panel.** Run real, interactive Claude / Codex / shell
   sessions in a movable, resizable terminal panel with a tab per session. It opens
   docked along the bottom of the dashboard, then you can drag it anywhere and
@@ -32,8 +52,52 @@ the first tag.
   (the embedded terminal's PTY). It is optional and feature-gated — the app still
   boots and runs without it; only the terminal goes dark. Everything else remains
   Node-stdlib-only with a vanilla, build-free frontend.
+- **Terminal opens small, compact, and frosted.** The embedded terminal now
+  defaults to a compact window tucked into the bottom-right corner instead of a
+  wide bottom strip. Because the surface is small, it can afford a frosted-glass
+  `backdrop-filter` and still stay within the T570 budget — so it's opaque *and*
+  glass, matching the rest of the UI. (Existing saved sizes reset once to the new
+  default; resize freely from there.)
+- **Terminal wears the Oasis brand.** The terminal window now carries the Oasis
+  boat mark + wordmark and the sea-glass palette (aqua/coral accents, sea-depth
+  body) so it reads as part of Oasis rather than a detached black terminal window.
+- **Project dock is a drag-to-reorder strip.** The bottom dock is now a single,
+  tidy scrolling row of project chips you can **drag to reorder** (the order
+  persists). The per-chip folder button and the "+N more / less" expander are
+  gone — just the projects and a single add (+).
 - Redesigned the GitHub Pages marketing page (`docs/`) as a cinematic film over
   the real looping ocean video.
+
+### Fixed
+- **`codex` now works in the terminal (and the relay uses real Codex).** The
+  OpenAI desktop install tucks the Codex CLI under
+  `%LOCALAPPDATA%\OpenAI\Codex\bin\…` and doesn't put it on `PATH`, so typing
+  `codex` failed even though Codex was installed. Oasis now finds the binary the
+  desktop app actually uses (via `CODEX_CLI_PATH` in `~/.codex/config.toml`,
+  preferring the newest versioned build over the stale top-level launcher),
+  prepends its folder to the embedded terminal's `PATH`, and calls it by full
+  path in the relay — so Claude and Codex can genuinely talk. Override with the
+  `OASIS_CODEX_BIN` env var if your `codex` lives elsewhere.
+- **"Silence" / Spotify default no longer force lo-fi.** Pressing play before
+  picking a station (toolbar button or the "Music: play / pause" palette command)
+  used to start lo-fi for *everyone*, even users who chose **Silence** at setup.
+  It now only auto-starts an actual radio bank.
+- **Preferences no longer reset your radio station.** Saving the setup/preferences
+  wizard wrote `radioStation: 0` every time, silently discarding the station you'd
+  landed on; it now preserves it.
+- **"Hand to Claude" button shows on first paint.** The Today list rendered before
+  the config (with `terminalEnabled`) had loaded, so the per-todo terminal button
+  could be missing until the next refresh; the list now re-renders once config
+  resolves.
+- **Tightened the one-AI-call-at-a-time lock.** The shared lock's wait cap was
+  shorter than the longest Codex turn (300s), so a slow turn could in theory
+  release a queued call into a second concurrent CLI invocation; the cap now sits
+  above the longest turn.
+
+### Removed
+- Dropped the unused `autoplay` config key, the vestigial `radioBank: 'spotify'`
+  value the validator accepted but nothing produced, and a stale `meadowName`
+  fallback left over from the Meadow→Oasis rename.
 
 ## Project history
 
