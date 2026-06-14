@@ -1,0 +1,16 @@
+{
+  "name": "oasis",
+  "version": "1.0.0",
+  "private": true,
+  "description": "A calm home base for people who build with AI. Local-first, single Node process.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "node-pty": "^1.1.0"
+  }
+}
