@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Oasis — a calm place to build</title>
-<meta name="description" content="Oasis is a local, private desktop home base for people who build with Claude Code and Codex — a calm window that floats over a living sea. Ask, develop ideas into angles, track your day, launch your tools. Free, for Mac & Windows. Runs on your machine; nothing phoned home.">
+<meta name="description" content="Oasis is a local, private desktop home base for people who build with Claude Code and Codex — a calm window that floats over a living sea. Ask, develop ideas into angles, track your day, run Claude/Codex/shell terminals, and hand tasks to Claude. Free, for Mac & Windows. Runs on your machine; nothing phoned home.">
 <meta property="og:title" content="Oasis — a calm place to build">
 <meta property="og:description" content="A private home base that floats over the sea, for people who make things with Claude Code and Codex. Free. Mac & Windows. Runs on your machine — nothing phoned home.">
 <meta property="og:type" content="website">
@@ -176,6 +176,26 @@
     background:rgba(6,34,46,.42);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);border:1px solid rgba(245,251,253,.14);color:var(--dim);}
   .pill.live{color:var(--ink);border-color:rgba(125,219,230,.4);}
 
+  /* terminal mock (chapter four) */
+  .term{margin-top:24px;max-width:600px;padding:0;overflow:hidden;}
+  .term .tbar{display:flex;align-items:center;gap:8px;padding:9px 11px;border-bottom:1px solid rgba(245,251,253,.1);
+    background:linear-gradient(rgba(255,255,255,.05),rgba(255,255,255,.012));}
+  .term .ttab{display:inline-flex;align-items:center;gap:7px;font-family:var(--mono);font-size:11px;padding:5px 10px;border-radius:8px;
+    color:var(--dim);background:rgba(255,255,255,.04);max-width:230px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .term .ttab.on{color:var(--ink);background:rgba(125,219,230,.16);border:1px solid rgba(125,219,230,.32);}
+  .term .tdot{width:7px;height:7px;border-radius:50%;flex:none;}
+  .term .tdot.claude{background:var(--coral);box-shadow:0 0 7px var(--coral);}
+  .term .tdot.shell{background:#8fb6c2;}
+  .term .tspace{flex:1;}
+  .term .tsend{font-family:var(--sans);font-size:11px;font-weight:600;padding:5px 12px;border-radius:999px;color:#ffe6da;
+    border:1px solid rgba(239,138,93,.55);background:linear-gradient(rgba(239,138,93,.32),rgba(239,138,93,.2));white-space:nowrap;}
+  .term .tbody{padding:15px 17px;font-family:var(--mono);font-size:12.5px;line-height:1.75;color:var(--dim);
+    min-height:118px;background:linear-gradient(rgba(8,17,22,.55),rgba(4,12,17,.66));}
+  .term .tbody .pr{color:var(--aqua-deep);}
+  .term .tbody .cm{color:var(--ink);}
+  .term .tbody .ok{color:#9be7c4;}
+  .term .tbody .cur{display:inline-block;width:7px;height:1.05em;background:var(--aqua);vertical-align:-2px;margin-left:2px;animation:blink 1s steps(1) infinite;}
+
   /* end card */
   .endcard{text-align:center;max-width:760px;margin:0 auto;}
   .endcard .wordmark{font-family:var(--sans);font-weight:800;font-size:clamp(3.4rem,13vw,9rem);letter-spacing:-.05em;line-height:.9;
@@ -324,6 +344,28 @@
         <div class="inst"><div class="il"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M3 17l5-4 4 3 3-2 6 4"/></svg>Gallery</div><div class="iv">watches your <b>Codex</b> images</div></div>
         <div class="inst"><div class="il"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5L19 19"/></svg>Briefing</div><div class="iv">one warm sentence a day</div></div>
         <div class="inst"><div class="il"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 17V5l10-2v12"/><circle cx="6.5" cy="17.5" r="2.3"/><circle cx="16.5" cy="15.5" r="2.3"/></svg>Music</div><div class="iv"><b>lo-fi</b> · ambient · Spotify</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 06b · CHAPTER FOUR — the terminal -->
+  <section class="frame place-bl" id="ch4">
+    <div class="col lens">
+      <span class="kicker reveal">Chapter Four</span>
+      <h2 class="scene reveal" data-d="1">Hand it to Claude.</h2>
+      <p class="deck reveal" data-d="2">A real terminal lives inside Oasis — a glass panel you can move and resize. Open Claude, Codex, or a shell right in your project, or hand a task from your list to Claude and watch it work.</p>
+      <div class="term glass reveal" data-d="3" aria-hidden="true">
+        <div class="tbar">
+          <span class="ttab on"><span class="tdot claude"></span>add a hover glow to the logo</span>
+          <span class="ttab"><span class="tdot shell"></span>shell</span>
+          <span class="tspace"></span>
+          <span class="tsend">▸ Send task</span>
+        </div>
+        <div class="tbody">
+          <div><span class="pr">oasis</span> $ <span class="cm">claude</span></div>
+          <div class="ok">● working in your project — IDEASONLY</div>
+          <div>editing <span class="cm">public/style.css</span> — added a soft glow on hover<span class="cur"></span></div>
+        </div>
       </div>
     </div>
   </section>
