@@ -951,7 +951,7 @@ async function applyUpdate() {
   go.disabled = false; go.textContent = 'Update now';
   if (r && r.ok) {
     $('#update-banner').classList.add('hidden');
-    toast('Updated' + (r.latest ? ' to v' + r.latest : '') + ' — restart Oasis to finish');
+    toast('Updated' + (r.latest ? ' to v' + r.latest : '') + ' — run "Restart Oasis" to load it');
   } else {
     toast((r && r.error) || 'Update failed');
     const url = (r && r.downloadUrl) || (updateInfo && updateInfo.downloadUrl);   // fall back to a manual download

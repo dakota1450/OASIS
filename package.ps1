@@ -79,7 +79,7 @@ New-Item -ItemType Directory -Force -Path $dist | Out-Null
 
 # Windows ships the .bat/.vbs launchers, the PowerShell setup, and the icon.
 $winZip = Build-Zip 'Oasis-Windows' @(
-  'Oasis.vbs','Launch Oasis.bat','Setup Oasis.bat','setup.ps1','oasis.ico'
+  'Oasis.vbs','Launch Oasis.bat','Restart Oasis.bat','Setup Oasis.bat','setup.ps1','oasis.ico'
 )
 
 # macOS ships the double-clickable .command launchers and a plain-text guide.
@@ -87,7 +87,7 @@ $winZip = Build-Zip 'Oasis-Windows' @(
 # 'START HERE (macOS).txt' (and the site FAQ) tell first-run users to either
 # right-click → Open, or run  bash "Setup Oasis.command"  once (which chmods them).
 $macZip = Build-Zip 'Oasis-macOS' @(
-  'Launch Oasis.command','Setup Oasis.command','START HERE (macOS).txt'
+  'Launch Oasis.command','Restart Oasis.command','Setup Oasis.command','START HERE (macOS).txt'
 )
 
 # publish both into the GitHub Pages site so the Download buttons work

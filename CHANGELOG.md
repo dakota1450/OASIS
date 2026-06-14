@@ -93,6 +93,12 @@ the first tag.
   version. (A git checkout still updates via `git pull`.) The marketing-page
   download links are also version-stamped (`?v=…`) so a re-download is never served
   a stale, same-named zip from the browser/CDN cache.
+- **A real "Restart Oasis" launcher.** `Launch Oasis` only ever *reused* an
+  already-running server (Node loads `server.js` once at startup), so after an
+  update the old version kept serving until the process was truly killed — and a
+  relaunch silently lost the port race to it. New **`Restart Oasis.bat`** /
+  **`Restart Oasis.command`** stop whatever holds port 7777 and relaunch fresh, so
+  an updated build actually loads. The post-update message now points to it.
 - **UX hardening pass (from a multi-agent audit).** A batch of papercuts:
   - **Panels fail loudly, not silently.** Ideas / Today / Journal / dock loaders
     now show an inline "couldn't load" message (or a toast) instead of a blank or
