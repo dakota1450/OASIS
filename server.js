@@ -28,7 +28,7 @@ const ROOT = __dirname;
 // Bump on every release; the published docs/version.json carries the same number
 // so a running copy can tell when a newer one has shipped. The update CHECK is
 // user-initiated only (no automatic outbound, nothing phoned home — see SECURITY.md).
-const VERSION = '1.1.1';
+const VERSION = '1.1.2';
 const UPDATE_MANIFEST = process.env.OASIS_UPDATE_MANIFEST || 'https://dakota1450.github.io/OASIS/version.json';
 const PUBLIC_DIR = path.join(ROOT, 'public');
 const SITE_DIR = path.join(ROOT, 'docs');                // marketing page (also the GitHub Pages site)
@@ -939,6 +939,75 @@ function checkUpdate(cb) {
   });
 }
 
+// Download a URL to a file (https, ≤3 redirects, 150 MB cap, 120s) — for self-update.
+function downloadTo(url, dest, cb, redirects = 0) {
+  if (!/^https:\/\//i.test(url)) return cb(new Error('https only'));
+  if (redirects > 3) return cb(new Error('too many redirects'));
+  let req;
+  const to = setTimeout(() => { try { if (req) req.destroy(); } catch {} cb(new Error('timed out')); }, 120000);
+  req = https.get(url, { headers: { 'User-Agent': 'Oasis' } }, (resp) => {
+    if ([301, 302, 303, 307, 308].includes(resp.statusCode) && resp.headers.location) {
+      clearTimeout(to); resp.resume(); return downloadTo(new URL(resp.headers.location, url).href, dest, cb, redirects + 1);
+    }
+    if (resp.statusCode !== 200) { clearTimeout(to); resp.resume(); return cb(new Error('http ' + resp.statusCode)); }
+    const file = fs.createWriteStream(dest);
+    let size = 0, aborted = false;
+    resp.on('data', (c) => { size += c.length; if (size > 150 * 1024 * 1024 && !aborted) { aborted = true; try { req.destroy(); file.destroy(); fs.unlinkSync(dest); } catch {} clearTimeout(to); cb(new Error('file too large')); } });
+    resp.pipe(file);
+    file.on('finish', () => { if (!aborted) { clearTimeout(to); file.close(() => cb(null)); } });
+    file.on('error', (e) => { clearTimeout(to); try { fs.unlinkSync(dest); } catch {} cb(e); });
+  });
+  req.on('error', (e) => { clearTimeout(to); cb(e); });
+}
+
+// Unpack a zip with the OS's own tool (keeps us npm-dependency-free).
+function extractZip(zipPath, dest, cb) {
+  try { fs.mkdirSync(dest, { recursive: true }); } catch {}
+  let cmd;
+  if (IS_WIN) cmd = `powershell -NoProfile -ExecutionPolicy Bypass -Command "Expand-Archive -LiteralPath '${zipPath}' -DestinationPath '${dest}' -Force"`;
+  else if (IS_MAC) cmd = `ditto -x -k "${zipPath}" "${dest}"`;
+  else cmd = `unzip -o "${zipPath}" -d "${dest}"`;
+  exec(cmd, { windowsHide: true, timeout: 120000 }, (err) => cb(err || null));
+}
+
+// Self-update a DOWNLOADED (non-git) install: fetch the latest zip, unpack it, and
+// copy the app files over this folder — PRESERVING the user's data/ and assets/
+// (and node_modules/). Node doesn't hold a lock on the already-loaded server.js, so
+// overwriting it is safe; the new code takes effect on the next restart.
+const UPDATE_PRESERVE = new Set(['data', 'assets', 'node_modules', '.git']);
+function applyDownloadUpdate(cb) {
+  checkUpdate((info) => {
+    if (!info.ok) return cb({ ok: false, error: info.error || 'could not check for an update', downloadUrl: info.downloadUrl || '' });
+    if (!info.updateAvailable) return cb({ ok: false, error: 'already up to date', latest: info.latest });
+    if (!info.downloadUrl) return cb({ ok: false, error: 'no download for this platform' });
+    const id = newId();
+    const zipPath = path.join(os.tmpdir(), 'oasis-update-' + id + '.zip');
+    const exDir = path.join(os.tmpdir(), 'oasis-update-' + id);
+    const cleanup = () => { try { fs.unlinkSync(zipPath); } catch {} try { fs.rmSync(exDir, { recursive: true, force: true }); } catch {} };
+    const fail = (msg) => { cleanup(); cb({ ok: false, error: msg, downloadUrl: info.downloadUrl }); };
+    downloadTo(info.downloadUrl, zipPath, (err) => {
+      if (err) return fail('download failed: ' + err.message);
+      extractZip(zipPath, exDir, (err2) => {
+        if (err2) return fail('could not unpack the update');
+        // The payload may land directly in exDir or inside one subfolder — find server.js.
+        let src = exDir;
+        if (!fs.existsSync(path.join(src, 'server.js'))) {
+          try { for (const d of fs.readdirSync(exDir, { withFileTypes: true })) { if (d.isDirectory() && fs.existsSync(path.join(exDir, d.name, 'server.js'))) { src = path.join(exDir, d.name); break; } } } catch {}
+        }
+        if (!fs.existsSync(path.join(src, 'server.js')) || !fs.existsSync(path.join(src, 'public'))) return fail('update package looked wrong — nothing changed');
+        try {
+          fs.cpSync(src, ROOT, { recursive: true, force: true, filter: (s) => {
+            const rel = path.relative(src, s);
+            return !rel || !UPDATE_PRESERVE.has(rel.split(/[\\/]/)[0]);   // skip user data + node_modules
+          } });
+        } catch (e) { return fail('could not apply the update: ' + ((e && e.message) || e)); }
+        cleanup();
+        cb({ ok: true, restartNeeded: true, latest: info.latest });
+      });
+    });
+  });
+}
+
 // ---------- terminal: PTY over a hand-rolled WebSocket ----------
 // We implement RFC 6455 framing in stdlib (no `ws` dep). Browsers send each
 // .send() as a single FIN=1 masked frame, so we treat one data frame as one
@@ -1080,11 +1149,13 @@ async function handleApi(req, res, url) {
   if (url.pathname === '/api/version' && req.method === 'GET') return sendJson(res, 200, { version: VERSION, isGit: isGitCheckout() });
   if (url.pathname === '/api/update/check' && req.method === 'GET') return checkUpdate((r) => sendJson(res, 200, r));
   if (url.pathname === '/api/update/apply' && req.method === 'POST') {
-    if (!isGitCheckout()) return sendJson(res, 200, { ok: false, manual: true, error: 'This copy was installed from a download — use the download to get the new version.' });
-    return exec('git pull --ff-only', { cwd: ROOT, windowsHide: true, timeout: 60000 }, (err, stdout, stderr) => {
-      if (err) return sendJson(res, 200, { ok: false, error: ((stderr || err.message || 'git pull failed') + '').split('\n')[0] });
-      return sendJson(res, 200, { ok: true, output: ((stdout || '') + '').slice(0, 500), restartNeeded: true });
-    });
+    if (isGitCheckout()) {
+      return exec('git pull --ff-only', { cwd: ROOT, windowsHide: true, timeout: 60000 }, (err, stdout, stderr) => {
+        if (err) return sendJson(res, 200, { ok: false, error: ((stderr || err.message || 'git pull failed') + '').split('\n')[0] });
+        return sendJson(res, 200, { ok: true, output: ((stdout || '') + '').slice(0, 500), restartNeeded: true });
+      });
+    }
+    return applyDownloadUpdate((r) => sendJson(res, 200, r));   // downloaded copy: fetch + unpack + overwrite in place
   }
 
   // notes

@@ -1,6 +1,6 @@
 {
-  "version": "1.1.1",
-  "notes": "UX polish: dismiss Ask answers, per-panel error states, keyboard focus rings, Escape closes every panel, delete confirmations, and remembered tabs.",
+  "version": "1.1.2",
+  "notes": "Updates now apply in place — a downloaded copy fetches and unpacks the new version itself (your data is kept), so a restart runs the latest. Download links are version-stamped to avoid stale caches.",
   "windows": "https://dakota1450.github.io/OASIS/download/Oasis-Windows.zip",
   "macos": "https://dakota1450.github.io/OASIS/download/Oasis-macOS.zip"
 }

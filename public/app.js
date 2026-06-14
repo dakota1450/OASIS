@@ -943,18 +943,20 @@ async function checkForUpdates(silent) {
   $('#update-banner').classList.remove('hidden');
 }
 async function applyUpdate() {
-  const data = updateInfo || {};
-  if (data.isGit) {
-    const go = $('#ub-go'); go.disabled = true; go.textContent = 'Updating…';
-    let r = null; try { r = await (await fetch('/api/update/apply', { method: 'POST' })).json(); } catch {}
-    go.disabled = false; go.textContent = 'Update now';
-    if (r && r.ok) { $('#update-banner').classList.add('hidden'); toast('Updated — restart Oasis to finish'); }
-    else { toast((r && r.error) || 'Update failed — try a manual git pull'); }
-  } else if (data.downloadUrl) {
-    window.open(data.downloadUrl, '_blank', 'noopener');
+  const go = $('#ub-go');
+  go.disabled = true; go.textContent = 'Updating…';
+  // Both paths now self-apply server-side: a git checkout pulls; a downloaded copy
+  // fetches the new zip and overwrites its app files in place (your data is kept).
+  let r = null; try { r = await (await fetch('/api/update/apply', { method: 'POST' })).json(); } catch {}
+  go.disabled = false; go.textContent = 'Update now';
+  if (r && r.ok) {
     $('#update-banner').classList.add('hidden');
-    toast('Opening the latest version — unzip it over your Oasis folder, then relaunch');
-  } else { toast('No download available for this platform'); }
+    toast('Updated' + (r.latest ? ' to v' + r.latest : '') + ' — restart Oasis to finish');
+  } else {
+    toast((r && r.error) || 'Update failed');
+    const url = (r && r.downloadUrl) || (updateInfo && updateInfo.downloadUrl);   // fall back to a manual download
+    if (url) window.open(url, '_blank', 'noopener');
+  }
 }
 function updateInit() {
   loadVersion();
