@@ -58,6 +58,23 @@ function buildDir() { const c = getConfig(); return (c.buildDir && c.buildDir.tr
 // these (after path resolution) is rejected — guards against traversal.
 const ASSET_ROOTS = [CODEX_IMAGES, ASSETS_DIR];
 
+// ---------- embedded terminal (the one optional native dependency) ----------
+// node-pty is the SINGLE npm dependency and it is OPTIONAL: present → the glass
+// terminal runs real interactive Claude/Codex/shell sessions over a PTY; absent
+// → the app still boots and the terminal degrades (read transcript / pop out to
+// the OS terminal). This is the one place Oasis steps outside the
+// Node-stdlib-only rule — see AGENTS.md §3 and SECURITY.md.
+let pty = null;
+try { pty = require('node-pty'); } catch { pty = null; }
+const TERMINAL_ENABLED = !!pty;
+// Per-boot secret the page must echo on the WebSocket handshake. WebSockets are
+// NOT subject to CORS, so a malicious page could otherwise open ws://127.0.0.1
+// and spawn a shell. A cross-origin page can't read this token (same-origin
+// policy on /api/config), so it can't authenticate the socket. Combined with
+// the Origin check below it gates terminal access to Oasis's own page only.
+const WS_TOKEN = crypto.randomBytes(16).toString('hex');
+const WS_ORIGINS = new Set([`http://localhost:${PORT}`, `http://127.0.0.1:${PORT}`]);
+
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
@@ -205,6 +222,7 @@ function claudeActivity(limit) {
     } else project = path.basename(path.dirname(f.full)).split('-').slice(-1)[0];
     items.push({
       source: 'claude', project, isWorktree,
+      id: path.basename(f.full, '.jsonl'), cwd: meta.cwd || '',
       title: meta.title || '(untitled session)',
       lastActive: new Date(f.mtime).toISOString(),
     });
@@ -227,12 +245,17 @@ function codexActivity(limit) {
     .slice(0, limit)
     .map((o) => ({
       source: 'codex', project: 'Codex', isWorktree: false,
+      id: o.id, cwd: typeof o.cwd === 'string' ? o.cwd : '',
       title: cleanTitle(o.thread_name || '') || '(untitled thread)',
       lastActive: o.updated_at || null,
     }));
 }
 
 let activityCache = { at: 0, payload: null };
+// id -> { source, cwd } for recently-seen sessions. The terminal resolves a
+// session's working directory from HERE (server-derived), never from the
+// client, so a request can only resume a real session in its own project dir.
+const SESSION_INDEX = new Map();
 function getActivity() {
   if (!getConfig().showActivity) return { items: [], counts: { claude: 0, codex: 0 }, generatedAt: new Date().toISOString() };
   const now = Date.now();
@@ -240,6 +263,8 @@ function getActivity() {
   const claude = claudeActivity(40), codex = codexActivity(25);
   const items = [...claude, ...codex].filter((i) => i.lastActive)
     .sort((a, b) => b.lastActive.localeCompare(a.lastActive)).slice(0, 60);
+  SESSION_INDEX.clear();
+  for (const it of [...claude, ...codex]) if (it.id) SESSION_INDEX.set(it.id, { source: it.source, cwd: it.cwd || '' });
   const payload = { items, counts: { claude: claude.length, codex: codex.length }, generatedAt: new Date().toISOString() };
   activityCache = { at: now, payload };
   return payload;
@@ -539,6 +564,128 @@ function revealAsset(id) {
   return { ok: true };
 }
 
+// ---------- terminal: PTY over a hand-rolled WebSocket ----------
+// We implement RFC 6455 framing in stdlib (no `ws` dep). Browsers send each
+// .send() as a single FIN=1 masked frame, so we treat one data frame as one
+// message — enough for terminal I/O. Application protocol is tiny JSON:
+//   client -> server : {t:'i',d} keystrokes · {t:'r',c,r} resize
+//   server -> client : {t:'o',d} output      · {t:'x',code} exited
+
+const WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
+function wsAccept(key) { return crypto.createHash('sha1').update(key + WS_GUID).digest('base64'); }
+
+// Encode an unmasked server->client frame.
+function wsFrame(payload, opcode = 1) {
+  const data = Buffer.isBuffer(payload) ? payload : Buffer.from(payload, 'utf8');
+  const len = data.length;
+  let header;
+  if (len < 126) { header = Buffer.alloc(2); header[1] = len; }
+  else if (len < 65536) { header = Buffer.alloc(4); header[1] = 126; header.writeUInt16BE(len, 2); }
+  else { header = Buffer.alloc(10); header[1] = 127; header.writeUInt32BE(0, 2); header.writeUInt32BE(len, 6); }
+  header[0] = 0x80 | (opcode & 0x0f);
+  return Buffer.concat([header, data]);
+}
+
+// Buffering parser for masked client->server frames. Calls onMessage(Buffer)
+// per data frame, onClose() on a close frame; replies to pings itself.
+function wsParser(socket, onMessage, onClose) {
+  let buf = Buffer.alloc(0);
+  return (chunk) => {
+    buf = Buffer.concat([buf, chunk]);
+    for (;;) {
+      if (buf.length < 2) return;
+      const opcode = buf[0] & 0x0f;
+      const masked = (buf[1] & 0x80) !== 0;
+      let len = buf[1] & 0x7f, offset = 2;
+      if (len === 126) { if (buf.length < 4) return; len = buf.readUInt16BE(2); offset = 4; }
+      else if (len === 127) { if (buf.length < 10) return; len = buf.readUInt32BE(6); offset = 10; }
+      let mask;
+      if (masked) { if (buf.length < offset + 4) return; mask = buf.subarray(offset, offset + 4); offset += 4; }
+      if (buf.length < offset + len) return;
+      let payload = buf.subarray(offset, offset + len);
+      if (masked) { const out = Buffer.alloc(len); for (let i = 0; i < len; i++) out[i] = payload[i] ^ mask[i & 3]; payload = out; }
+      buf = buf.subarray(offset + len);
+      if (opcode === 0x8) return onClose();                                   // close
+      if (opcode === 0x9) { try { socket.write(wsFrame(payload, 0xA)); } catch {} continue; } // ping->pong
+      if (opcode === 0x0 || opcode === 0x1 || opcode === 0x2) onMessage(payload); // continuation/text/binary
+      // 0xA (pong) ignored
+    }
+  };
+}
+
+const safeSessionId = (s) => (typeof s === 'string' && /^[A-Za-z0-9-]{6,64}$/.test(s)) ? s : '';
+function defaultShell() {
+  if (IS_WIN) return 'powershell.exe';
+  return process.env.SHELL || (IS_MAC ? '/bin/zsh' : '/bin/bash');
+}
+
+// Build the optional launch command typed into a fresh shell. `id` is already
+// charset-validated; `cwd` is passed to pty.spawn (never shell-interpolated).
+function terminalLaunchCommand(kind, id, source) {
+  if (kind === 'claude') return id && source === 'claude' ? `claude --resume ${id}` : 'claude';
+  if (kind === 'codex') return 'codex';
+  return '';
+}
+
+function handleUpgrade(req, socket, head) {
+  let url; try { url = new URL(req.url, `http://localhost:${PORT}`); } catch { return socket.destroy(); }
+  if (url.pathname !== '/term') return socket.destroy();
+  // Gate: feature on, our own page's Origin, and the per-boot token.
+  if (!TERMINAL_ENABLED) return socket.destroy();
+  if (!WS_ORIGINS.has(req.headers.origin)) return socket.destroy();
+  if (url.searchParams.get('token') !== WS_TOKEN) return socket.destroy();
+  const key = req.headers['sec-websocket-key'];
+  if (!key) return socket.destroy();
+
+  socket.write([
+    'HTTP/1.1 101 Switching Protocols', 'Upgrade: websocket',
+    'Connection: Upgrade', `Sec-WebSocket-Accept: ${wsAccept(key)}`, '\r\n',
+  ].join('\r\n'));
+  socket.setTimeout(0); socket.setNoDelay(true);
+
+  // Resolve what to run — kind from the client, cwd from OUR session index.
+  const kind = ['shell', 'claude', 'codex'].includes(url.searchParams.get('kind')) ? url.searchParams.get('kind') : 'shell';
+  const id = safeSessionId(url.searchParams.get('id'));
+  getActivity();                                   // refresh SESSION_INDEX (cached)
+  const known = id ? SESSION_INDEX.get(id) : null;
+  // A resumed session opens in its own project; a fresh terminal opens in the
+  // Oasis project itself (not the home folder), so it's "in the project".
+  let cwd = known && known.cwd && fs.existsSync(known.cwd) ? known.cwd : ROOT;
+  const launch = terminalLaunchCommand(kind, id, known && known.source);
+
+  let term;
+  try {
+    term = pty.spawn(defaultShell(), [], {
+      name: 'xterm-color', cols: 80, rows: 24, cwd, env: process.env,
+    });
+  } catch (e) {
+    try { socket.write(wsFrame(JSON.stringify({ t: 'o', d: `\r\n[oasis] could not start terminal: ${e.message}\r\n` }))); } catch {}
+    return socket.destroy();
+  }
+
+  const send = (obj) => { try { socket.write(wsFrame(JSON.stringify(obj))); } catch {} };
+  let launched = !launch;                          // type the launch command after the shell's first prompt
+  term.onData((d) => {
+    if (!launched) { launched = true; setTimeout(() => { try { term.write(launch + '\r'); } catch {} }, 140); }
+    send({ t: 'o', d });
+  });
+  term.onExit(({ exitCode }) => { send({ t: 'x', code: exitCode }); try { socket.end(); } catch {} });
+
+  let dead = false;
+  const cleanup = () => { if (dead) return; dead = true; try { term.kill(); } catch {} try { socket.destroy(); } catch {} };
+  const feed = wsParser(socket,
+    (payload) => {
+      let msg; try { msg = JSON.parse(payload.toString('utf8')); } catch { return; }
+      if (msg.t === 'i' && typeof msg.d === 'string') { try { term.write(msg.d); } catch {} }
+      else if (msg.t === 'r') { const c = msg.c | 0, r = msg.r | 0; if (c > 0 && r > 0) { try { term.resize(c, r); } catch {} } }
+    },
+    cleanup);
+  if (head && head.length) feed(head);
+  socket.on('data', feed);
+  socket.on('close', cleanup);
+  socket.on('error', cleanup);
+}
+
 // ---------- routing ----------
 
 async function handleApi(req, res, url) {
@@ -683,7 +830,8 @@ async function handleApi(req, res, url) {
   if (url.pathname === '/api/config' && req.method === 'GET') {
     const cfg = getConfig();
     const host = (req.headers.host || `localhost:${PORT}`);
-    return sendJson(res, 200, { ...cfg, defaultBuildDir: DEFAULT_BUILD_DIR, origin: `http://${host}` });
+    return sendJson(res, 200, { ...cfg, defaultBuildDir: DEFAULT_BUILD_DIR, origin: `http://${host}`,
+      terminalEnabled: TERMINAL_ENABLED, wsToken: WS_TOKEN, projectName: path.basename(ROOT) });
   }
   if (url.pathname === '/api/config' && req.method === 'POST') {
     const body = await readBody(req);
@@ -769,9 +917,16 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+server.on('upgrade', (req, socket, head) => {
+  try { handleUpgrade(req, socket, head); } catch { try { socket.destroy(); } catch {} }
+});
+
 server.on('error', (e) => {
   if (e.code === 'EADDRINUSE') { console.error(`Oasis: port ${PORT} already in use.`); process.exit(1); }
   throw e;
 });
 
-server.listen(PORT, '127.0.0.1', () => console.log(`Oasis is open at http://localhost:${PORT}`));
+server.listen(PORT, '127.0.0.1', () => {
+  console.log(`Oasis is open at http://localhost:${PORT}`);
+  console.log(TERMINAL_ENABLED ? 'Terminal: enabled (node-pty loaded)' : 'Terminal: disabled (node-pty not installed)');
+});

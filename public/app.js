@@ -266,8 +266,18 @@ function renderTasks(todos) {
   const row = (t) => `<div class="task ${t.done ? 'done' : ''}" data-id="${t.id}" draggable="true">
     <span class="box" title="Toggle">${t.done ? icon('check') : ''}</span>
     <span class="txt">${esc(t.text)}</span>
+    ${!t.done && cfg.terminalEnabled ? `<button class="run" title="Hand to Claude — open a terminal in the project and do this">${icon('boat')}</button>` : ''}
     <button class="x" title="Remove">${icon('x')}</button></div>`;
   list.innerHTML = open.map(row).join('') + done.map(row).join('');
+}
+// Hand a task to Claude: open a Claude terminal in the Oasis project, seeded with
+// the task. Claude works it live in the glass window (and still asks before it
+// edits or runs anything — you stay in the loop).
+function runTaskWithClaude(text) {
+  text = (text || '').trim(); if (!text) return;
+  const short = text.length > 42 ? text.slice(0, 40) + '…' : text;
+  openTerminal({ kind: 'claude', seed: text, title: short, sub: 'Claude · ' + (cfg.projectName || 'project') });
+  toast('Handing it to Claude…');
 }
 function tasksInit() {
   $('#today-input').addEventListener('keydown', async (e) => {
@@ -276,6 +286,7 @@ function tasksInit() {
   });
   $('#today-list').addEventListener('click', async (e) => {
     const row = e.target.closest('.task'); if (!row) return; const id = row.dataset.id;
+    if (e.target.closest('.run')) { runTaskWithClaude(row.querySelector('.txt').textContent); return; }
     if (e.target.closest('.x')) { await fetch(`/api/todos/${id}`, { method: 'DELETE' }); loadTasks(); }
     else if (e.target.closest('.box')) {
       await fetch(`/api/todos/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ done: !row.classList.contains('done') }) });
@@ -892,7 +903,7 @@ function openAgentLog() {
     (items.length ? items.map((it, i) => `<div class="pop-row" data-i="${i}">
         <span class="tk-dot ${it.source === 'codex' ? 'codex' : 'claude'}"></span>
         <div class="pr-main"><div class="pr-q">${esc(it.title)}</div><div class="pr-meta">${esc(it.project)} · ${relTime(it.lastActive)}</div></div>
-        <div class="pr-acts"><button data-task title="Make a task">${icon('check')}</button><button data-journal title="Note to journal">${icon('feather')}</button></div>
+        <div class="pr-acts">${it.id ? `<button data-term title="Resume in a terminal">${icon('terminal')}</button>` : ''}<button data-task title="Make a task">${icon('check')}</button><button data-journal title="Note to journal">${icon('feather')}</button></div>
       </div>`).join('') : '<div class="pop-empty">No recent agent activity.</div>');
   document.body.appendChild(el);
   const r = $('#ticker').getBoundingClientRect();
@@ -902,12 +913,212 @@ function openAgentLog() {
   agentPopEl = el; el.focus();
   el.onclick = async (e) => {
     const row = e.target.closest('.pop-row'); if (!row) return; const it = items[+row.dataset.i]; if (!it) return;
-    if (e.target.closest('[data-task]')) { await addTask(`Follow up: ${it.title}`); toast('Added to Today'); closeAgentPop(); }
+    if (e.target.closest('[data-term]')) { openTerminal({ kind: it.source, id: it.id, title: it.project || it.source, sub: it.source === 'claude' ? 'resume' : 'session' }); closeAgentPop(); }
+    else if (e.target.closest('[data-task]')) { await addTask(`Follow up: ${it.title}`); toast('Added to Today'); closeAgentPop(); }
     else if (e.target.closest('[data-journal]')) { await addJournal(`Agent (${it.project}): ${it.title}`, ''); toast('Saved to journal'); closeAgentPop(); }
   };
   setTimeout(() => document.addEventListener('click', agentPopOutside, true), 0);
 }
 function agentLogInit() { $('#ticker').addEventListener('click', openAgentLog); }
+
+/* ================= built-in terminal dock ================= */
+/* A docked panel in the #ui grid — NOT a floating window. Each session is a tab
+   hosting an xterm bound to a server PTY over a WebSocket; only the active tab's
+   host is shown. The one optional native dep (node-pty) lives on the server; we
+   gate on cfg.terminalEnabled. Tiny JSON protocol: see server.js. */
+const TERM_THEME = {
+  background: 'rgba(0,0,0,0)', foreground: '#e9f3f1', cursor: '#aee9df', cursorAccent: '#0b1417',
+  selectionBackground: 'rgba(120,200,190,.35)',
+  black: '#0b1417', red: '#ff9d8a', green: '#9be7c4', yellow: '#ffd9a0', blue: '#9cc9ff',
+  magenta: '#e3b3ff', cyan: '#aee9df', white: '#d8e6e3', brightBlack: '#5b6e6b',
+  brightRed: '#ffb3a3', brightGreen: '#b6f0d6', brightYellow: '#ffe6c2', brightBlue: '#bcd9ff',
+  brightMagenta: '#eecbff', brightCyan: '#c8f3ec', brightWhite: '#ffffff',
+};
+let termSessions = [], activeTermId = null, termSeq = 0;
+
+const TERM_GEO_KEY = 'oasis_term_geo';
+const TERM_MINW = 360, TERM_MINH = 180;
+let termGeoSet = false;
+const isTermOpen = () => $('#terminal-dock').classList.contains('open');
+function termDefaultGeo() {                            // opens docked across the bottom
+  const m = 16, w = Math.min(window.innerWidth - m * 2, 1180), h = 340;
+  return { left: Math.round((window.innerWidth - w) / 2), top: Math.max(m, window.innerHeight - h - 84), width: w, height: h };
+}
+function termClampGeo(g) {
+  g.width = Math.max(TERM_MINW, Math.min(g.width, window.innerWidth - 8));
+  g.height = Math.max(TERM_MINH, Math.min(g.height, window.innerHeight - 8));
+  g.left = Math.round(Math.max(140 - g.width, Math.min(g.left, window.innerWidth - 140)));  // keep ≥140px on screen
+  g.top = Math.round(Math.max(4, Math.min(g.top, window.innerHeight - 44)));                 // keep the bar reachable
+  g.width = Math.round(g.width); g.height = Math.round(g.height);
+  return g;
+}
+function termApplyGeo(g) {
+  const d = $('#terminal-dock').style;
+  d.left = g.left + 'px'; d.top = g.top + 'px'; d.width = g.width + 'px'; d.height = g.height + 'px';
+}
+function termLoadGeo() {
+  let g; try { g = JSON.parse(localStorage.getItem(TERM_GEO_KEY)); } catch {}
+  return termClampGeo(g && typeof g.width === 'number' ? g : termDefaultGeo());
+}
+function termSaveGeo() {
+  const r = $('#terminal-dock').getBoundingClientRect();
+  try { localStorage.setItem(TERM_GEO_KEY, JSON.stringify({ left: Math.round(r.left), top: Math.round(r.top), width: Math.round(r.width), height: Math.round(r.height) })); } catch {}
+}
+function openTermDock() {
+  if (!termGeoSet) { termApplyGeo(termLoadGeo()); termGeoSet = true; }
+  $('#terminal-dock').classList.add('open');
+  requestAnimationFrame(fitActiveTerm);
+}
+function closeTermDock() { $('#terminal-dock').classList.remove('open'); }
+function fitActiveTerm() { const s = termSessions.find((x) => x.id === activeTermId); if (s) { try { s.fit.fit(); } catch {} } }
+
+function renderTermTabs() {
+  $('#td-tabs').innerHTML = termSessions.map((s) => `<button class="td-tab ${s.id === activeTermId ? 'active' : ''}" data-id="${s.id}" title="${esc(s.sub ? s.title + ' · ' + s.sub : s.title)}">
+      <span class="td-dot ${s.kind}"></span><span class="td-tab-name">${esc(s.title)}</span>
+      <span class="td-tab-x" data-close="${s.id}" title="Close">${icon('x')}</span></button>`).join('');
+  const s = termSessions.find((x) => x.id === activeTermId);
+  $('#td-send').innerHTML = (s && s.seed && !s.seedSent)
+    ? `<button class="td-sendbtn" title="Type this task into Claude and run it">${icon('boat')}<span>Send task</span></button>` : '';
+}
+
+function activateTerm(id) {
+  activeTermId = id;
+  termSessions.forEach((s) => { s.host.style.display = s.id === id ? '' : 'none'; });
+  renderTermTabs();
+  fitActiveTerm();
+  const s = termSessions.find((x) => x.id === id); if (s) setTimeout(() => { try { s.term.focus(); } catch {} }, 0);
+}
+
+function openTerminal(opts = {}) {
+  if (!cfg.terminalEnabled) { toast('Embedded terminal needs node-pty — run npm install in Oasis'); return; }
+  if (!window.Terminal) { toast('Terminal failed to load'); return; }
+  const kind = ['shell', 'claude', 'codex'].includes(opts.kind) ? opts.kind : 'shell';
+  const title = opts.title || (kind === 'claude' ? 'Claude' : kind === 'codex' ? 'Codex' : 'Terminal');
+  const sub = opts.sub || cfg.projectName || '';        // which project this session lives in
+  const id = 't' + (termSeq++);
+
+  const host = document.createElement('div'); host.className = 'td-host'; host.dataset.id = id;
+  $('#td-body').appendChild(host);
+  const term = new Terminal({
+    allowTransparency: true, cursorBlink: true, fontSize: 13, scrollback: 5000,
+    fontFamily: 'ui-monospace, "Cascadia Code", "Cascadia Mono", Consolas, Menlo, monospace', theme: TERM_THEME,
+  });
+  const fit = new FitAddon.FitAddon();
+  term.loadAddon(fit); term.open(host);
+
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  const qs = new URLSearchParams({ token: cfg.wsToken || '', kind });
+  if (opts.id) qs.set('id', opts.id);
+  const ws = new WebSocket(`${proto}://${location.host}/term?${qs}`);
+  const session = { id, kind, title, sub, seed: opts.seed || '', seedSent: false, term, fit, ws, host, status: 'connecting' };
+  const send = (o) => { try { if (ws.readyState === 1) ws.send(JSON.stringify(o)); } catch {} };
+  session.send = send;
+  const sendResize = () => send({ t: 'r', c: term.cols, r: term.rows });
+  ws.onopen = () => { session.status = 'connected'; sendResize(); if (id === activeTermId) setTimeout(() => { try { term.focus(); } catch {} }, 0); };
+  ws.onmessage = (ev) => {
+    let m; try { m = JSON.parse(ev.data); } catch { return; }
+    if (m.t === 'o') term.write(m.d);
+    else if (m.t === 'x') { term.write(`\r\n\x1b[2m[process exited${m.code != null ? ' · ' + m.code : ''}]\x1b[0m\r\n`); session.status = 'exited'; }
+  };
+  ws.onclose = () => { if (session.status !== 'exited') session.status = 'disconnected'; };
+  term.onData((d) => send({ t: 'i', d }));
+  term.onResize(() => sendResize());
+
+  termSessions.push(session);
+  openTermDock();
+  activateTerm(id);
+  return session;
+}
+
+function closeTerm(id) {
+  const i = termSessions.findIndex((s) => s.id === id); if (i < 0) return;
+  const s = termSessions[i];
+  try { s.ws.close(); } catch {} try { s.term.dispose(); } catch {}
+  s.host.remove();
+  termSessions.splice(i, 1);
+  if (activeTermId === id) {
+    const next = termSessions[i] || termSessions[i - 1];
+    if (next) activateTerm(next.id);
+    else { activeTermId = null; renderTermTabs(); closeTermDock(); }
+  } else renderTermTabs();
+}
+
+// Inject the staged task into the active Claude session's prompt and run it.
+function sendSeedActive() {
+  const s = termSessions.find((x) => x.id === activeTermId);
+  if (!s || !s.seed || s.seedSent) return;
+  s.send({ t: 'i', d: String(s.seed) + '\r' }); s.seedSent = true;
+  toast('Sent to Claude'); renderTermTabs(); try { s.term.focus(); } catch {}
+}
+
+// New-terminal menu (a fresh shell / Claude / Codex), anchored under `anchorEl`.
+function openTermMenu(anchorEl) {
+  const open = $('#term-menu'); if (open) { open.remove(); return; }
+  if (!cfg.terminalEnabled) { toast('Embedded terminal needs node-pty — run npm install in Oasis'); return; }
+  const anchor = anchorEl || $('#btn-terminal');
+  const m = document.createElement('div'); m.className = 'pop'; m.id = 'term-menu';
+  m.innerHTML = `<div class="pop-head"><h3>New terminal</h3></div>
+    <div class="pop-row" data-kind="shell"><span class="tk-dot" style="background:#8fb6c2"></span><div class="pr-main"><div class="pr-q">Shell</div><div class="pr-meta">a fresh interactive shell</div></div></div>
+    <div class="pop-row" data-kind="claude"><span class="tk-dot claude"></span><div class="pr-main"><div class="pr-q">Claude</div><div class="pr-meta">start a new claude session</div></div></div>
+    <div class="pop-row" data-kind="codex"><span class="tk-dot codex"></span><div class="pr-main"><div class="pr-q">Codex</div><div class="pr-meta">start a new codex session</div></div></div>`;
+  document.body.appendChild(m);
+  const r = anchor.getBoundingClientRect();
+  m.style.left = Math.round(Math.max(12, Math.min(r.left, window.innerWidth - m.offsetWidth - 12))) + 'px';
+  const top = (r.bottom + 8 + m.offsetHeight > window.innerHeight) ? r.top - m.offsetHeight - 8 : r.bottom + 8;
+  m.style.top = Math.round(Math.max(12, top)) + 'px';
+  m.onclick = (e) => { const row = e.target.closest('[data-kind]'); if (!row) return; openTerminal({ kind: row.dataset.kind }); m.remove(); };
+  setTimeout(() => document.addEventListener('click', function out(ev) {
+    if (!m.contains(ev.target) && !ev.target.closest('#btn-terminal') && !ev.target.closest('#td-new')) { m.remove(); document.removeEventListener('click', out, true); }
+  }, true), 0);
+}
+
+function terminalInit() {
+  const chip = $('#btn-terminal');
+  if (chip) chip.addEventListener('click', () => {
+    if (!cfg.terminalEnabled) { toast('Embedded terminal needs node-pty — run npm install in Oasis'); return; }
+    if (isTermOpen() && termSessions.length) closeTermDock();
+    else { openTermDock(); if (!termSessions.length) openTermMenu(chip); }
+  });
+  $('#td-new').addEventListener('click', () => openTermMenu($('#td-new')));
+  $('#td-hide').addEventListener('click', closeTermDock);
+  $('#td-tabs').addEventListener('click', (e) => {
+    const x = e.target.closest('[data-close]'); if (x) { closeTerm(x.dataset.close); return; }
+    const tab = e.target.closest('.td-tab'); if (tab) activateTerm(tab.dataset.id);
+  });
+  $('#td-send').addEventListener('click', (e) => { if (e.target.closest('.td-sendbtn')) sendSeedActive(); });
+  // drag to move — grab the tab bar (but not its tabs/buttons)
+  const dock = $('#terminal-dock'), bar = dock.querySelector('.td-bar');
+  bar.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('.td-tab, .td-btn, .td-sendbtn')) return;
+    e.preventDefault();
+    const r = dock.getBoundingClientRect(), sx = e.clientX, sy = e.clientY, ox = r.left, oy = r.top, w = r.width, h = r.height;
+    dock.classList.add('dragging'); try { bar.setPointerCapture(e.pointerId); } catch {}
+    const move = (ev) => termApplyGeo(termClampGeo({ left: ox + ev.clientX - sx, top: oy + ev.clientY - sy, width: w, height: h }));
+    const up = () => { dock.classList.remove('dragging'); try { bar.releasePointerCapture(e.pointerId); } catch {} bar.removeEventListener('pointermove', move); bar.removeEventListener('pointerup', up); termSaveGeo(); };
+    bar.addEventListener('pointermove', move); bar.addEventListener('pointerup', up);
+  });
+  // resize from the side / bottom-corner handles
+  dock.querySelectorAll('.td-rz').forEach((h) => h.addEventListener('pointerdown', (e) => {
+    e.preventDefault(); e.stopPropagation();
+    const dir = h.dataset.dir, r = dock.getBoundingClientRect();
+    const sx = e.clientX, sy = e.clientY, o = { left: r.left, top: r.top, width: r.width, height: r.height };
+    dock.classList.add('resizing'); try { h.setPointerCapture(e.pointerId); } catch {}
+    const move = (ev) => {
+      const dx = ev.clientX - sx, dy = ev.clientY - sy, g = { ...o };
+      if (dir.includes('e')) g.width = o.width + dx;
+      if (dir.includes('s')) g.height = o.height + dy;
+      if (dir.includes('w')) { const nw = Math.max(TERM_MINW, o.width - dx); g.left = o.left + (o.width - nw); g.width = nw; }
+      termApplyGeo(termClampGeo(g)); fitActiveTerm();
+    };
+    const up = () => { dock.classList.remove('resizing'); try { h.releasePointerCapture(e.pointerId); } catch {} h.removeEventListener('pointermove', move); h.removeEventListener('pointerup', up); fitActiveTerm(); termSaveGeo(); };
+    h.addEventListener('pointermove', move); h.addEventListener('pointerup', up);
+  }));
+  // keep it on-screen and refit when the window resizes
+  window.addEventListener('resize', () => {
+    if (termGeoSet) { const r = dock.getBoundingClientRect(); termApplyGeo(termClampGeo({ left: r.left, top: r.top, width: r.width, height: r.height })); }
+    fitActiveTerm();
+  });
+}
 
 /* ================= config + boot ================= */
 async function loadConfig() {
@@ -949,7 +1160,7 @@ function visibilityInit() {
 tickClock(); applyPhase();
 $('#sea-poster').addEventListener('error', () => document.body.classList.add('no-photo'));  // both video + poster gone → gradient
 document.addEventListener('pointerdown', seaResume, { once: true });                          // resume if autoplay was blocked
-sceneInit(); panelTabsInit(); askInit(); askHistoryInit(); ideasInit(); tasksInit(); journalInit(); galleryInit(); lightboxInit(); tickerInit(); dockInit(); playerInit(); paletteInit(); timerInit(); briefingInit(); agentLogInit(); setupInit(); visibilityInit(); keyboardInit();
+sceneInit(); panelTabsInit(); askInit(); askHistoryInit(); ideasInit(); tasksInit(); journalInit(); galleryInit(); lightboxInit(); tickerInit(); dockInit(); playerInit(); paletteInit(); timerInit(); briefingInit(); agentLogInit(); terminalInit(); setupInit(); visibilityInit(); keyboardInit();
 loadTasks(); loadIdeas(); loadJournal(); loadTicker(); loadDock();
 loadConfig().then(spotifyHandleRedirect);
 startTimers();

@@ -1,0 +1,249 @@
+# Architecture
+
+How Oasis fits together. For the rules an agent must follow see
+[`AGENTS.md`](AGENTS.md); for the threat model see [`SECURITY.md`](SECURITY.md).
+
+## Overview
+
+Oasis is a single Node process with one optional dependency (`node-pty`, for the
+embedded terminal). It serves a static vanilla frontend and a small JSON API,
+persists state to flat files, shells out to the local `claude` CLI for its AI
+features, and — when `node-pty` is present — bridges a PTY to the browser over a
+hand-rolled WebSocket. It binds `127.0.0.1:7777` and never talks to the network
+on its own.
+
+```
+                          ┌──────────────────────────────────────────┐
+   Browser (Edge/Chrome   │              server.js (Node)             │
+   --app window, or tab)  │                                           │
+        │                 │  http.createServer  →  route by prefix:   │
+        │  fetch /api/* ──▶│   /asset/<id>   → serveAsset (root-jailed)│
+        │  GET  /        ──▶│   /api/*        → handleApi (JSON)        │
+        │  GET  /site/*  ──▶│   /site/*       → docs/ (marketing)       │
+        │                 │   /*            → public/ (the app)        │
+        │◀── HTML/CSS/JS ─│                                           │
+        │◀── JSON ────────│        │                │                 │
+                          │        ▼                ▼                 │
+                          │   data/*.json      child_process          │
+                          │   (read/writeJson)  `claude -p` (stdin)    │
+                          │        │                                   │
+                          │        ▼                                   │
+                          │   reads (read-only, for the ticker/gallery)│
+                          │   ~/.claude/projects/**/*.jsonl            │
+                          │   ~/.codex/session_index.jsonl             │
+                          │   ~/.codex/generated_images/               │
+                          └──────────────────────────────────────────┘
+```
+
+## Request lifecycle
+
+`http.createServer(async (req, res) => …)` (bottom of `server.js`) wraps every
+request in try/catch (→ `500 {error}`) and dispatches by URL prefix:
+
+1. `/asset/<id>` → `serveAsset(res, id)` — image bytes, root-jailed.
+2. `/api/...` → `handleApi(req, res, url)` — the API.
+3. `/site` or `/site/...` → `serveFromDir(res, SITE_DIR, …)` — serves `docs/`
+   (the marketing page) for local preview.
+4. anything else → `serveStatic` → `serveFromDir(res, PUBLIC_DIR, …)` — the app.
+
+`handleApi` is a flat sequence of guards:
+`if (url.pathname === '/api/x' && req.method === 'M') return …`. Path-param
+routes use the pre-split `seg = url.pathname.split('/').filter(Boolean)` array
+(`seg[2]` is the id). Unmatched → `404 {error:'no such endpoint'}`.
+
+Static serving (`serveFromDir`) normalizes the path, prefix-checks it against the
+base dir (traversal guard), maps the extension through `MIME`, and supports HTTP
+`Range` requests (needed for the backdrop video to seek/stream).
+
+## Persistence — `data/`
+
+State is plain JSON files, all under `data/`, all accessed through two helpers:
+
+```js
+readJson(file, fallback)   // never throws — returns fallback on any error
+writeJson(file, value)     // pretty-printed, 2-space
+```
+
+`ensureFiles()` runs at boot and creates `data/`, `assets/`, and each file with a
+sensible empty seed.
+
+| File                 | Shape | Written by |
+| -------------------- | ----- | ---------- |
+| `notes.json`         | `[{id, text, created, pinned, status:'seed'|'sprouting'|'ready', source:'me'|'spark', sprouting_at, ready_at}]` | Ideas |
+| `todos.json`         | `[{id, text, done, created, order}]` | Today |
+| `journal.json`       | `[{id, text, mood, created}]` | Journal |
+| `sparks.json`        | `[{at, seed, mode, items}]` (last 100) | Spark / develop |
+| `ask-history.json`   | `[{id, q, answer, at}]` (last 30) | Ask |
+| `briefings.json`     | `{ "<YYYY-MM-DD>": {insight, stats, generatedAt} }` | Daily briefing |
+| `tools.json`         | `[{id, name, target}]` (user-added dock entries) | Tool dock |
+| `config.json`        | preferences (see below) | Setup wizard / Settings |
+
+`config.json` is merged over `CONFIG_DEFAULTS` on read, so a partial or empty file
+always yields a working config. Keys: `name`, `buildDir`, `showActivity`,
+`defaultPhase` (`auto|dawn|day|dusk|night`), `radioBank` (`lofi|old|spotify|off`),
+`radioStation`, `autoplay`, `spotifyClientId`, `setupDone`.
+
+`data/` is **gitignored** — it's personal. The distributed zip ships its own
+fresh, empty `data/` (built by `package.ps1`).
+
+## The API
+
+All responses are JSON via `sendJson`. POST/PATCH bodies are parsed by `readBody`
+(JSON, 2 MB cap).
+
+| Method + path | Purpose |
+| ------------- | ------- |
+| `GET /api/activity` | Merged, cached (15s) feed of recent Claude + Codex sessions. |
+| `GET /api/notes` · `POST /api/notes` · `PATCH /api/notes/:id` · `DELETE /api/notes/:id` | Ideas CRUD. PATCH accepts `{pinned?, text?, status?}`. |
+| `POST /api/ask` | Freeform answer via `claude -p`; appends to ask-history. |
+| `GET /api/ask-history` · `DELETE /api/ask-history` · `DELETE /api/ask-history/:id` | Ask history. |
+| `GET /api/briefing` | One cached warm sentence per local day, with stats. |
+| `POST /api/spark` | Idea generation. Body `{seed, mode:'ideas'|'expand'|'imageprompt'}`. |
+| `GET /api/sparks` | Last 20 spark batches. |
+| `GET /api/assets` · `POST /api/assets/import` · `POST /api/reveal` | Gallery list / import-from-URL / reveal-in-folder. |
+| `GET /asset/:id` | Image bytes for an asset (root-jailed, `Cache-Control: max-age=3600`). |
+| `GET /api/todos` · `POST /api/todos` · `POST /api/todos/reorder` · `PATCH /api/todos/:id` · `DELETE /api/todos/:id` | Today list. |
+| `GET /api/journal` · `POST /api/journal` · `PATCH /api/journal/:id` · `DELETE /api/journal/:id` | Journal CRUD. |
+| `GET /api/config` · `POST /api/config` | Preferences (POST validates each field). Also returns `terminalEnabled` + the per-boot `wsToken`. |
+| `GET /api/tools` · `POST /api/tools` · `DELETE /api/tools/:id` · `POST /api/launch` | Tool dock: scan + custom entries + launch. |
+| `WS /term?token&kind&id` | WebSocket → PTY (the embedded terminal). Not part of `handleApi`; see below. |
+
+## AI integration (`runClaude`)
+
+The Ask, Spark/develop, and briefing features call the **local `claude` CLI**:
+
+```js
+spawn('claude -p', { shell: true, stdio: ['pipe','pipe','pipe'] })
+// prompt is written to stdin, then stdin.end()  ← required
+```
+
+- `shell: true` because `claude` is an npm shim on Windows.
+- Prompt over **stdin, not argv** — keeps quotes/newlines/braces off the command
+  line (a correctness *and* security choice; see SECURITY.md).
+- `stdin.end()` is required or `claude` blocks ~3s waiting for input.
+- 120s timeout, then kill → `{ok:false, error:'spark timed out'}`.
+
+Prompt builders (`buildSparkPrompt`, `buildAskPrompt`, the inline briefing prompt)
+demand **strict JSON / single-line output**. Model output is never trusted:
+`extractJson(text, wantArray)` slices from the first `[`/`{` to the last `]`/`}`
+and `JSON.parse`s; shape is then validated; failure degrades to
+`{ok:false, error:'could not parse'}`.
+
+**Concurrency:** a single module-level `sparkBusy` flag serializes Ask, Spark, and
+briefing. A second concurrent request returns `429`. This keeps only one `claude`
+process alive at a time.
+
+## Activity ingestion (read-only)
+
+The ticker reads, but never writes, two external sources:
+
+- **Claude Code:** scans `~/.claude/projects/*/` for `*.jsonl` session files
+  (skips `agent-*` and tiny files), reads the head of each (`readHeadLines`,
+  512 KB), and extracts a title (summary → first enqueued prompt → first user
+  message, with noise filtered by `acceptTitle`) and the `cwd` (to derive the
+  project name; `.claude-worktrees` paths are unwound to the parent project).
+- **Codex:** parses `~/.codex/session_index.jsonl`, dedupes by `id` keeping the
+  newest `updated_at`, and maps to `{source:'codex', title, lastActive}`.
+
+Results are merged, sorted by recency, capped at 60, and cached for 15s
+(`getActivity`). If `config.showActivity` is false, it returns an empty feed.
+Each item also carries its session `id` (the Claude `.jsonl` filename, or the
+Codex thread id) and `cwd`; `getActivity` rebuilds a module-level `SESSION_INDEX`
+(`id → {source, cwd}`) on each scan so the terminal can resume a session in its
+real project directory **without trusting any client-supplied path**.
+
+## Embedded terminal (`/term` WebSocket → PTY)
+
+Gated entirely on the optional `node-pty` (`TERMINAL_ENABLED = !!pty`). The HTTP
+server's `upgrade` event runs `handleUpgrade`, which:
+
+1. **Authorizes** the handshake — path `/term`, an `Origin` in `WS_ORIGINS`
+   (Oasis's own page), and the per-boot `WS_TOKEN` (minted at startup, served to
+   the page via `/api/config`). Any failure → `socket.destroy()`. See SECURITY.md.
+2. **Completes the WebSocket handshake** in pure stdlib — `wsAccept` (SHA-1 of the
+   key + the RFC 6455 GUID) and a `101` response. Framing is hand-rolled:
+   `wsFrame` encodes unmasked server→client frames; `wsParser` buffers and unmasks
+   client→server frames (and auto-replies to pings).
+3. **Spawns a PTY** — always the user's shell (`defaultShell()`); for a
+   `claude`/`codex` request it then *types* the launch command
+   (`claude --resume <id>`, etc.) once the shell's first output appears. `cwd` is
+   the resumed session's project (from `SESSION_INDEX`) or, for a fresh terminal,
+   the **Oasis project root** (`ROOT`) — so a new terminal opens "in the project",
+   not the home folder. The `id` is charset-validated before interpolation.
+4. **Bridges** PTY ⇄ socket with a tiny JSON protocol — `{t:'i',d}` keystrokes and
+   `{t:'r',c,r}` resize from the client; `{t:'o',d}` output and `{t:'x',code}` exit
+   to the client. Socket close / error / PTY exit all tear down the other side.
+
+The frontend (`openTerminal` in `app.js`) mounts an `xterm.js` instance (vendored,
+no build) and wires it to this socket. Terminals are tabs in a single **movable,
+resizable panel** (`#terminal-dock`, `position: fixed`). It opens docked along the
+bottom by default; the user drags it by the tab bar and resizes from side/corner
+handles (`.td-rz`), with the geometry clamped to the viewport and persisted to
+`localStorage` (`oasis_term_geo`). Each session is a tab with its own `.td-host`;
+only the active one is shown.
+
+**Hand a task to Claude.** Each open todo has a button (`runTaskWithClaude`) that
+opens a `claude` terminal in the project with the task text *staged* on the window
+(`opts.seed`). A "Send task" button in the titlebar types it into Claude on click
+(`{t:'i', d: task + '\r'}`). It's a deliberate one-click rather than auto-typed:
+Claude's interactive startup is slow/variable and shows a one-time folder-trust
+prompt, so a click (after you've eyeballed it) is far more reliable than blind
+timing — and Claude still asks before it edits or runs anything.
+
+## Gallery & asset security
+
+`scanAssets` walks the **`ASSET_ROOTS`** — `~/.codex/generated_images` and the
+app's own `assets/` — to depth 3, keeps image extensions only, sorts by mtime,
+caps at 200. Each asset's `id` is the URL-safe base64 of its absolute path.
+
+Serving (`serveAsset`) and revealing (`revealAsset`) **decode the id and reject
+any path that doesn't resolve under an allowed root** (`underRoot`) — the
+traversal guard. There is intentionally **no** endpoint that deletes a file from
+disk. Import (`importAsset`) is `https`-only, follows ≤3 redirects, caps at 30 MB
+/ 60s, and writes into `assets/imported-<ts>.<ext>`.
+
+## Tool dock
+
+`scanTools` lists the user's projects under `buildDir()` (config `buildDir`, else
+`~/Documents/build`). For each subfolder it detects a launch script
+(`launch*.bat` on Windows, `launch*.command|.sh` on macOS) and/or an
+`npm run dev`, plus an "open folder" action; a `package.json` `oasisName`
+overrides the display name. Custom entries come from `tools.json`. `launchTool`
+shells out per platform via `osOpen`/terminal, validating the action against the
+tool's allowed actions first.
+
+## Frontend (`public/`)
+
+Vanilla, no framework, no modules, no build:
+
+- **`index.html`** — the shell plus an inline SVG `<symbol>` icon set. The UI uses
+  **no emoji** (icons are SVG).
+- **`app.js`** — all UI logic: the looping backdrop video with day/golden palettes
+  and a still-photo fallback, the Ask bar, Ideas + inline "develop into angles",
+  Today, Journal, Gallery + lightbox, music, the activity ticker, command palette,
+  focus timer, the **terminal panel** (`openTerminal` — xterm + WebSocket, tabbed
+  sessions in a movable/resizable floating panel), and the first-run setup wizard.
+  Data flows through same-origin `fetch` against the API (and the `/term` socket).
+- **`vendor/`** — `xterm.js`, `xterm.css`, and `addon-fit.js`, copied verbatim
+  from the `@xterm/*` packages. They're loaded with plain `<script>`/`<link>` tags
+  (the UMD build exposes `window.Terminal` / `window.FitAddon`), so there is still
+  no bundler or build step.
+- **`style.css`** — the sea-glass theme (transparent glass panels,
+  `backdrop-filter`, light type with Georgia-italic editorial accents). The
+  terminal panel uses an **opaque dark fill, not `backdrop-filter`** — it's a large
+  surface, and blurring something that size would blow the T570 "no blur on large
+  elements" budget (a solid terminal also reads better).
+
+Performance: the backdrop throttles and sleeps when the tab is hidden and falls
+back to a still photo if the video can't play; canvas effects are capped ~30fps;
+no `filter: blur()` on large/animated elements (the T570 budget). Clipboard
+copies keep a `<textarea>` fallback because the async Clipboard API can fail over
+`http://localhost`.
+
+## Distribution pipeline
+
+`package.ps1` → `dist/Oasis-{Windows,macOS}.zip` → copied into `docs/download/`.
+Each zip is a clean stage (server + `public/` + docs + **empty** data + empty
+`assets/` + the platform's launchers). Zip entries are written by hand with
+**forward-slash** separators for cross-platform extraction. `docs/` is then
+published via GitHub Pages (`/docs` on `main`). Details: [`PUBLISH.md`](PUBLISH.md).

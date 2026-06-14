@@ -168,6 +168,8 @@ body.no-photo { background: linear-gradient(155deg, #46c6d6 0%, #129fb6 42%, #0a
 .task.done .txt { color: var(--ink-faint); text-decoration: line-through; }
 .task .x { background: none; border: 0; color: var(--ink-faint); cursor: pointer; font-size: .95rem; opacity: 0; transition: opacity .15s, color .15s; display: grid; place-items: center; }
 .task:hover .x { opacity: 1; } .task .x:hover { color: var(--coral-deep); }
+.task .run { flex: none; background: none; border: 0; color: var(--aqua-deep); cursor: pointer; font-size: 1rem; opacity: 0; transition: opacity .15s, color .15s, transform .15s; display: grid; place-items: center; margin-top: -1px; }
+.task:hover .run { opacity: .7; } .task .run:hover { opacity: 1; color: var(--claude); transform: translateX(1px); }
 
 /* ideas */
 .idea { position: relative; margin: .4rem .15rem; padding: .6rem .7rem; background: rgba(255,255,255,.34);
@@ -468,3 +470,69 @@ body.no-photo { background: linear-gradient(155deg, #46c6d6 0%, #129fb6 42%, #0a
   #ask-form, .sea, .eq i, .ans-card .ripple-dots i, .pop, .capture-menu, .pal-box, .ans-card, .jentry, .task, .idea, .idea-angles, .thumb { animation: none !important; }
 }
 .pop:focus, .capture-menu:focus { outline: 1px solid rgba(16,168,198,.45); outline-offset: -1px; }
+
+/* ---------------- floating terminal panel ---------------- */
+/* A movable, resizable panel (position:fixed, out of the grid). Opens docked at
+   the bottom by default; drag it by the tab bar and resize from any edge/corner.
+   Opaque dark fill — NOT backdrop-filter — a large blurred surface would blow the
+   T570 perf budget, and a solid terminal reads better. */
+#terminal-dock {
+  position: fixed; z-index: 60; display: none; flex-direction: column; min-width: 0;
+  border-radius: 16px; overflow: hidden; color: #e9f3f1;
+  background: linear-gradient(rgba(13, 26, 32, .97), rgba(8, 17, 22, .98));
+  border: 1px solid rgba(140, 220, 230, .24);
+  box-shadow: 0 26px 70px rgba(3, 18, 26, .6), inset 0 1px 0 rgba(255, 255, 255, .08);
+}
+#terminal-dock.open { display: flex; animation: term-rise .16s ease; }
+#terminal-dock.dragging, #terminal-dock.resizing { user-select: none; }
+@keyframes term-rise { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+/* resize handles — sides + bottom corners (drag the tab bar to move). Inset just
+   inside the panel so overflow:hidden doesn't clip them. */
+.td-rz { position: absolute; z-index: 4; }
+.td-rz.s { bottom: 0; left: 16px; right: 16px; height: 7px; cursor: ns-resize; }
+.td-rz.e { right: 0; top: 44px; bottom: 16px; width: 7px; cursor: ew-resize; }
+.td-rz.w { left: 0; top: 44px; bottom: 16px; width: 7px; cursor: ew-resize; }
+.td-rz.se { bottom: 0; right: 0; width: 17px; height: 17px; cursor: nwse-resize; }
+.td-rz.sw { bottom: 0; left: 0; width: 17px; height: 17px; cursor: nesw-resize; }
+.td-rz.se::after { content: ""; position: absolute; right: 3px; bottom: 3px; width: 8px; height: 8px;
+  border-right: 2px solid rgba(150, 220, 225, .55); border-bottom: 2px solid rgba(150, 220, 225, .55); }
+
+.td-bar { display: flex; align-items: center; gap: .4rem; padding: .34rem .45rem; flex: none; cursor: grab; user-select: none;
+  background: linear-gradient(rgba(255,255,255,.06), rgba(255,255,255,.015)); border-bottom: 1px solid rgba(140,220,230,.14); }
+#terminal-dock.dragging .td-bar { cursor: grabbing; }
+.td-tabs { display: flex; align-items: center; gap: .25rem; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.td-tabs::-webkit-scrollbar { display: none; }
+.td-tab { display: inline-flex; align-items: center; gap: .4rem; flex: none; max-width: 230px; cursor: pointer; font: inherit;
+  font-size: .76rem; color: #bcd2cf; background: rgba(255,255,255,.04); border: 1px solid transparent; border-radius: 9px; padding: .34rem .5rem; }
+.td-tab:hover { background: rgba(255,255,255,.09); color: #eafaf7; }
+.td-tab.active { background: rgba(150,220,225,.16); border-color: rgba(150,220,225,.3); color: #fff; }
+.td-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; box-shadow: 0 0 7px currentColor; }
+.td-dot.claude { background: var(--claude); color: var(--claude); }
+.td-dot.codex { background: var(--codex); color: var(--codex); }
+.td-dot.shell { background: #8fb6c2; color: #8fb6c2; }
+.td-tab-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.td-tab-x { display: grid; place-items: center; flex: none; opacity: .5; border-radius: 5px; margin: -.1rem -.15rem -.1rem .05rem; }
+.td-tab-x .ic { font-size: .82rem; }
+.td-tab-x:hover { opacity: 1; background: rgba(239,138,93,.35); color: #fff; }
+.td-spacer { flex: none; }
+.td-btn { display: grid; place-items: center; width: 28px; height: 28px; flex: none; border: 0; border-radius: 8px;
+  background: rgba(255,255,255,.06); color: #cfe6e2; cursor: pointer; font: inherit; }
+.td-btn .ic { font-size: 1rem; }
+.td-btn:hover { background: rgba(255,255,255,.14); color: #fff; }
+#td-hide:hover { background: rgba(239,138,93,.3); color: #fff; }
+
+.td-send { display: inline-flex; flex: none; }
+.td-sendbtn { display: inline-flex; align-items: center; gap: .35rem; cursor: pointer; font: inherit; font-size: .72rem; font-weight: 600;
+  padding: .32rem .7rem; border-radius: 999px; border: 1px solid rgba(239,138,93,.55); color: #ffe6da;
+  background: linear-gradient(rgba(239,138,93,.34), rgba(239,138,93,.2)); white-space: nowrap; }
+.td-sendbtn .ic { font-size: .92rem; }
+.td-sendbtn:hover { background: linear-gradient(rgba(239,138,93,.5), rgba(239,138,93,.32)); color: #fff; }
+
+/* one host per session; only the active one is shown */
+.td-body { position: relative; flex: 1; min-height: 0; }
+.td-host { position: absolute; inset: 0; padding: .4rem .3rem .3rem .6rem; }
+.td-body .xterm, .td-body .xterm-viewport, .td-body .xterm-screen { background: transparent !important; }
+.td-body .xterm-viewport::-webkit-scrollbar { width: 9px; }
+.td-body .xterm-viewport::-webkit-scrollbar-thumb { background: rgba(150,220,225,.25); border-radius: 9px; }
+@media (prefers-reduced-motion: reduce) { #terminal-dock { animation: none !important; } }
