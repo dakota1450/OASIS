@@ -120,6 +120,7 @@ function sceneInit() { $$('#scene button').forEach((b) => b.addEventListener('cl
 function showTab(name) {
   $$('.panel-tabs .ptab').forEach((t) => t.classList.toggle('active', t.dataset.tab === name));
   $$('#left .panel-pane').forEach((p) => p.classList.toggle('active', p.dataset.pane === name));
+  try { localStorage.setItem('oasis_leftPanel', name); } catch {}
 }
 function panelTabsInit() { $$('.panel-tabs .ptab').forEach((tab) => tab.addEventListener('click', () => showTab(tab.dataset.tab))); }
 
@@ -197,10 +198,11 @@ function askInit() {
 
 /* ================= ideas (notes) ================= */
 async function keepIdea(text, source = 'spark') {
-  await fetch('/api/notes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, source }) });
+  try { const r = await fetch('/api/notes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, source }) }); if (!r.ok) throw 0; }
+  catch { toast('Could not save idea'); return; }
   loadIdeas();
 }
-async function loadIdeas() { renderIdeas(await (await fetch('/api/notes')).json()); }
+async function loadIdeas() { try { renderIdeas(await (await fetch('/api/notes')).json()); } catch { $('#ideas-list').innerHTML = '<div class="empty">Couldn\'t load ideas — is Oasis still running?</div>'; } }
 let ideasCache = [];
 function renderIdeas(notes) {
   const list = $('#ideas-list');
@@ -255,7 +257,7 @@ function ideasInit() {
     if (taskBtn) { const t = taskBtn.dataset.task; await addTask(t.length > 90 ? t.slice(0, 89) + '…' : t); toast('Added to Today'); return; }
     const copyBtn = e.target.closest('[data-copy]');
     if (copyBtn) { toast((await copyText(copyBtn.dataset.copy)) ? 'Copied' : 'Copy failed'); return; }
-    if (e.target.closest('.del')) { await fetch(`/api/notes/${id}`, { method: 'DELETE' }); loadIdeas(); return; }
+    if (e.target.closest('.del')) { await fetch(`/api/notes/${id}`, { method: 'DELETE' }); loadIdeas(); toast('Idea removed'); return; }
     if (e.target.closest('.pin')) { await patchNote(id, { pinned: !idea.classList.contains('pinned') }); return; }
     if (e.target.closest('.develop') || e.target.closest('.idea-text')) { const n = ideasCache.find((x) => x.id === id); if (n) developIdea(idea, n); }
   });
@@ -264,10 +266,11 @@ async function patchNote(id, body) { await fetch(`/api/notes/${id}`, { method: '
 
 /* ================= today (tasks) ================= */
 async function addTask(text) {
-  await fetch('/api/todos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) });
+  try { const r = await fetch('/api/todos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) }); if (!r.ok) throw 0; }
+  catch { toast('Could not add task'); return; }
   loadTasks();
 }
-async function loadTasks() { renderTasks(await (await fetch('/api/todos')).json()); }
+async function loadTasks() { try { renderTasks(await (await fetch('/api/todos')).json()); } catch { $('#today-list').innerHTML = '<div class="empty">Couldn\'t load tasks — is Oasis still running?</div>'; } }
 function renderTasks(todos) {
   const list = $('#today-list');
   if (!todos.length) { list.innerHTML = '<div class="empty">Nothing here yet.<br>Add a task above.</div>'; return; }
@@ -296,7 +299,7 @@ function tasksInit() {
   $('#today-list').addEventListener('click', async (e) => {
     const row = e.target.closest('.task'); if (!row) return; const id = row.dataset.id;
     if (e.target.closest('.run')) { runTaskWithClaude(row.querySelector('.txt').textContent); return; }
-    if (e.target.closest('.x')) { await fetch(`/api/todos/${id}`, { method: 'DELETE' }); loadTasks(); }
+    if (e.target.closest('.x')) { await fetch(`/api/todos/${id}`, { method: 'DELETE' }); loadTasks(); toast('Task removed'); }
     else if (e.target.closest('.box')) {
       await fetch(`/api/todos/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ done: !row.classList.contains('done') }) });
       loadTasks();
@@ -328,10 +331,11 @@ const moodColor = (m) => (MOODS.find((x) => x.v === m) || { c: 'var(--calm)' }).
 let journalMood = '';
 async function addJournal(text, mood) {
   text = (text || '').trim(); if (!text) return;
-  await fetch('/api/journal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, mood: mood || '' }) });
+  try { const r = await fetch('/api/journal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, mood: mood || '' }) }); if (!r.ok) throw 0; }
+  catch { toast('Could not save entry'); return; }
   loadJournal();
 }
-async function loadJournal() { renderJournal(await (await fetch('/api/journal')).json()); }
+async function loadJournal() { try { renderJournal(await (await fetch('/api/journal')).json()); } catch { $('#journal-list').innerHTML = '<div class="empty">Couldn\'t load your journal — is Oasis still running?</div>'; } }
 function dayKey(d) { return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`; }
 function renderJournal(items) {
   const list = $('#journal-list');
@@ -376,20 +380,21 @@ function journalInit() {
   $('#journal-input').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveJournalEntry(); } });
   $('#journal-list').addEventListener('click', async (e) => {
     const del = e.target.closest('.jdel'); if (!del) return;
-    const entry = del.closest('.jentry'); await fetch(`/api/journal/${entry.dataset.id}`, { method: 'DELETE' }); loadJournal();
+    const entry = del.closest('.jentry'); await fetch(`/api/journal/${entry.dataset.id}`, { method: 'DELETE' }); loadJournal(); toast('Entry removed');
   });
 }
 
 /* ================= gallery + lightbox ================= */
 let assetsCache = [];
 async function loadGallery() {
+  $('#gallery-grid').innerHTML = '<div class="gal-empty">Loading…</div>';
   try { const data = await (await fetch('/api/assets')).json(); assetsCache = data.items || []; renderGallery(); }
   catch { $('#gallery-grid').innerHTML = '<div class="gal-empty">Could not open the gallery.</div>'; }
 }
 function renderGallery() {
   const grid = $('#gallery-grid');
   if (!assetsCache.length) { grid.innerHTML = '<div class="gal-empty">Nothing here yet — generate or import an image to keep it.</div>'; return; }
-  grid.innerHTML = assetsCache.map((a, i) => `<div class="thumb" data-id="${esc(a.id)}" style="animation-delay:${Math.min(i * 14, 320)}ms"><img loading="lazy" src="${a.rel}" alt="${esc(a.name)}"></div>`).join('');
+  grid.innerHTML = assetsCache.map((a, i) => `<div class="thumb" data-id="${esc(a.id)}" role="button" tabindex="0" aria-label="Open ${esc(a.name)}" style="animation-delay:${Math.min(i * 14, 320)}ms"><img loading="lazy" src="${a.rel}" alt="${esc(a.name)}"></div>`).join('');
 }
 function openGallery() { $('#gallery').classList.remove('hidden'); loadGallery(); }
 function closeGallery() { $('#gallery').classList.add('hidden'); }
@@ -447,7 +452,7 @@ function tickerInit() {
 const ACTION_ORDER = ['bat', 'dev', 'url', 'folder'];
 const DOCK_ORDER_KEY = 'oasis_dock_order';
 let dockTools = [], dockDragEnd = 0;
-async function loadDock() { dockTools = await (await fetch('/api/tools')).json(); renderDock(dockTools); }
+async function loadDock() { try { dockTools = await (await fetch('/api/tools')).json(); renderDock(dockTools); } catch { toast('Could not load your tools'); } }
 function primaryAction(t) { return ACTION_ORDER.find((a) => t.actions.includes(a)) || 'folder'; }
 async function launchTool(id, action) {
   try {
@@ -743,6 +748,7 @@ function switchPlayerTab(src) {
   $('#player').dataset.tab = src;
   $$('.pl-tab').forEach((t) => t.classList.toggle('active', t.dataset.src === src));
   $$('.pl-pane').forEach((p) => p.classList.toggle('active', p.dataset.pane === src));
+  try { localStorage.setItem('oasis_playerTab', src); } catch {}
 }
 function playerInit() {
   $('#player-toggle').addEventListener('click', () => $('#player').classList.toggle('collapsed'));
@@ -907,8 +913,10 @@ async function finishSetup() {
   tickClock(); setPhaseControl(cfg.defaultPhase || 'auto'); loadTicker(); loadDock();
   if (suPrefs) toast('Preferences saved');
 }
+function closeSetup() { $('#setup').classList.add('hidden'); }
 function setupInit() {
   $('#open-settings').addEventListener('click', () => openSetup(true));
+  $('.setup-shade').addEventListener('click', closeSetup);
   $('#su-next').addEventListener('click', () => { if (suStep === suMax - 1) finishSetup(); else showStep(suStep + 1); });
   $('#su-back').addEventListener('click', () => showStep(suStep - 1));
   $('#su-sound').addEventListener('click', (e) => { const b = e.target.closest('[data-sound]'); if (b) { suSel.bank = b.dataset.sound; renderSetupChoices(); } });
@@ -966,12 +974,16 @@ function keyboardInit() {
       if (relayOpen()) return closeRelay();
       if (!$('#lightbox').classList.contains('hidden')) return closeLightbox();
       if (!$('#gallery').classList.contains('hidden')) return closeGallery();
+      if (!$('#setup').classList.contains('hidden')) return closeSetup();
       if (!$('#tool-add').classList.contains('hidden')) return $('#tool-add').classList.add('hidden');
       if (!$('#timer-pop').classList.contains('hidden')) return $('#timer-pop').classList.add('hidden');
+      if ($('#terminal-dock').classList.contains('open')) return closeTermDock();
       if ($('#ask-answer').classList.contains('has-content')) return clearAnswer();
       return;
     }
     const typing = /^(INPUT|TEXTAREA)$/.test(e.target.tagName);
+    // Make non-button elements with role="button" keyboard-activatable (ticker, gallery thumbs).
+    if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('[role="button"]')) { e.preventDefault(); e.target.click(); return; }
     if (e.key === '/' && !typing && !paletteOpen()) { e.preventDefault(); $('#ask-input').focus(); }
   });
 }
@@ -1003,7 +1015,7 @@ async function openAskHistory() {
   el.setAttribute('role', 'menu'); el.setAttribute('aria-label', 'Recent asks'); el.tabIndex = -1;
   askPopEl = el; el.focus();
   el.onclick = async (e) => {
-    if (e.target.closest('[data-clear]')) { await fetch('/api/ask-history', { method: 'DELETE' }); closeAskPop(); toast('History cleared'); return; }
+    if (e.target.closest('[data-clear]')) { if (!confirm('Delete all ask history? This cannot be undone.')) return; await fetch('/api/ask-history', { method: 'DELETE' }); closeAskPop(); toast('History cleared'); return; }
     const row = e.target.closest('.pop-row'); if (!row) return; const h = items.find((x) => x.id === row.dataset.id); if (!h) return;
     if (e.target.closest('[data-del]')) { await fetch('/api/ask-history/' + h.id, { method: 'DELETE' }); openAskHistory(); return; }
     if (e.target.closest('[data-reask]')) { closeAskPop(); $('#ask-input').value = h.q; ask(h.q); return; }
@@ -1210,6 +1222,7 @@ function openTerminal(opts = {}) {
     else if (m.t === 'x') { term.write(`\r\n\x1b[2m[process exited${m.code != null ? ' · ' + m.code : ''}]\x1b[0m\r\n`); session.status = 'exited'; }
   };
   ws.onclose = () => { if (session.status !== 'exited') session.status = 'disconnected'; };
+  ws.onerror = () => { if (session.status !== 'exited') { session.status = 'error'; try { term.write('\r\n\x1b[1;31m[connection error — the terminal link dropped]\x1b[0m\r\n'); } catch {} } };
   term.onData((d) => send({ t: 'i', d }));
   term.onResize(() => sendResize());
 
@@ -1360,7 +1373,9 @@ async function startRelay() {
 
 async function pollRelay() {
   if (!relayActiveId) return;
-  let job; try { job = await (await fetch('/api/relay/' + relayActiveId)).json(); } catch { return; }
+  let job;
+  try { job = await (await fetch('/api/relay/' + relayActiveId)).json(); }
+  catch { const box = $('#rl-stream'); if (box && !box.querySelector('.rl-conn-lost')) box.insertAdjacentHTML('beforeend', '<div class="rl-note err rl-conn-lost">Connection lost — retrying…</div>'); lastRelaySig = ''; return; }
   if (!job || job.error === 'no such relay') return;
   renderRelayStream(job);
   if (job.status === 'done' || job.status === 'error') { stopRelayPoll(); relayRunning = false; setRelayBusy(false); }
@@ -1430,7 +1445,7 @@ async function viewRelay(id) {
 
 function relayStreamClick(e) {
   const del = e.target.closest('[data-del]');
-  if (del) { e.stopPropagation(); fetch('/api/relays/' + del.dataset.del, { method: 'DELETE' }).then(openRelayHistory); return; }
+  if (del) { e.stopPropagation(); fetch('/api/relays/' + del.dataset.del, { method: 'DELETE' }).then(() => { openRelayHistory(); toast('Relay deleted'); }); return; }
   const hist = e.target.closest('[data-view]'); if (hist) { viewRelay(hist.dataset.view); return; }
   const b = e.target.closest('.rl-acts button'); if (!b) return;
   const final = b.closest('.rl-acts').dataset.final || '';
@@ -1448,10 +1463,13 @@ function relayInit() {
     const b = e.target.closest('.rl-segbtn'); if (!b) return;
     relayMode = b.dataset.mode;
     $$('#rl-mode .rl-segbtn').forEach((x) => x.classList.toggle('active', x === b));
+    try { localStorage.setItem('oasis_relayMode', relayMode); } catch {}
   });
   $('#rl-form').addEventListener('submit', (e) => { e.preventDefault(); startRelay(); });
   $('#rl-task').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); startRelay(); } });
   $('#rl-stream').addEventListener('click', relayStreamClick);
+  let savedMode = null; try { savedMode = localStorage.getItem('oasis_relayMode'); } catch {}
+  if (savedMode === 'debate' || savedMode === 'delegate') { relayMode = savedMode; $$('#rl-mode .rl-segbtn').forEach((x) => x.classList.toggle('active', x.dataset.mode === savedMode)); }
 }
 
 /* ================= config + boot ================= */
@@ -1461,6 +1479,10 @@ async function loadConfig() {
   if (cfg.spotifyClientId) $('#sp-clientid').value = cfg.spotifyClientId;
   renderYtSaved();
   loadTasks();                                   // re-render now that cfg.terminalEnabled is known (Hand-to-Claude button)
+  // restore last-used views (client-only, localStorage)
+  if (!cfg.terminalEnabled) { const bt = $('#btn-terminal'); if (bt) { bt.classList.add('dim'); bt.title = 'Terminal — needs the optional node-pty install (npm install)'; } }
+  try { const lp = localStorage.getItem('oasis_leftPanel'); if (lp === 'today' || lp === 'ideas') showTab(lp); } catch {}
+  try { const pt = localStorage.getItem('oasis_playerTab'); if (pt && ['lofi', 'old', 'spotify', 'youtube'].includes(pt)) switchPlayerTab(pt); } catch {}
   setPhaseControl(cfg.defaultPhase || 'auto');
   tickClock();
   if (cfg.radioBank === 'old' || cfg.radioBank === 'lofi') {
@@ -1487,8 +1509,11 @@ function startTimers() {
 function stopTimers() { timers.forEach(clearInterval); timers = []; }
 function visibilityInit() {
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) { seaPause(); stopTimers(); }
-    else { seaResume(); tickClock(); applyPhase(); startTimers(); }
+    if (document.hidden) { seaPause(); stopTimers(); stopRelayPoll(); }            // also rest the relay poll while hidden (perf budget)
+    else {
+      seaResume(); tickClock(); applyPhase(); startTimers();
+      if (relayRunning && relayActiveId && !relayPollTimer) { pollRelay(); relayPollTimer = setInterval(pollRelay, 1500); }  // resume + catch up
+    }
   });
 }
 
