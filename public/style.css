@@ -417,6 +417,21 @@ body.no-photo { background: linear-gradient(155deg, #46c6d6 0%, #129fb6 42%, #0a
 .su-phases { display: flex; gap: .4rem; flex-wrap: wrap; }
 .su-phase-pick { font-size: .82rem; cursor: pointer; color: var(--ink-soft); background: rgba(255,255,255,.4); border: 1px solid rgba(255,255,255,.55); border-radius: 999px; padding: .5em 1.1em; transition: background .15s, color .15s; }
 .su-phase-pick.sel { background: rgba(16,168,198,.2); border-color: rgba(16,168,198,.5); color: var(--aqua-deep); }
+/* setup: connect AI step */
+.su-ai { display: flex; flex-direction: column; gap: .5rem; }
+.su-ai-checking { font-size: .82rem; color: var(--ink-faint); padding: .2rem 0; }
+.su-ai-row { display: flex; gap: .6rem; align-items: flex-start; background: rgba(255,255,255,.4); border: 1px solid rgba(255,255,255,.55); border-radius: 13px; padding: .6em .8em; }
+.su-ai-row.ok { background: rgba(31,182,166,.14); border-color: rgba(31,182,166,.4); }
+.su-ai-dot { flex: none; width: 9px; height: 9px; border-radius: 50%; margin-top: .42em; background: var(--ink-faint); box-shadow: 0 0 0 3px rgba(0,0,0,.04); }
+.su-ai-row.ok .su-ai-dot { background: var(--aqua); box-shadow: 0 0 0 3px rgba(16,168,198,.22); }
+.su-ai-row.no .su-ai-dot { background: var(--coral); box-shadow: 0 0 0 3px rgba(226,115,74,.2); }
+.su-ai-name { font-size: .9rem; font-weight: 600; color: var(--ink); display: flex; align-items: baseline; gap: .5em; flex-wrap: wrap; }
+.su-ai-state { font-size: .74rem; font-weight: 500; color: var(--ink-faint); }
+.su-ai-row.ok .su-ai-state { color: var(--aqua-deep); }
+.su-ai-help { font-size: .76rem; color: var(--ink-soft); line-height: 1.5; margin-top: .25rem; }
+.su-ai-help code { background: rgba(16,168,198,.12); padding: .06em .35em; border-radius: 5px; font-family: ui-monospace, monospace; font-size: .92em; color: var(--aqua-deep); word-break: break-word; }
+.su-ai-recheck { margin-top: .65rem; font: inherit; font-size: .76rem; cursor: pointer; color: var(--aqua-deep); background: rgba(16,168,198,.14); border: 1px solid rgba(16,168,198,.34); padding: .4em .9em; border-radius: 999px; }
+.su-ai-recheck:hover { background: rgba(16,168,198,.24); }
 .setup-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 1.4rem; }
 .setup-dots { display: flex; gap: .4rem; }
 .setup-dots span { width: 7px; height: 7px; border-radius: 50%; background: rgba(12,58,71,.2); transition: background .2s, width .2s; }

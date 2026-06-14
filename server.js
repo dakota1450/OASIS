@@ -508,6 +508,23 @@ function probeCodex() {
   });
 }
 
+// Is the `claude` CLI installed? (Powers Ask, Ideas-develop, the briefing, and the
+// relay.) Same probe-once-and-cache shape as probeCodex; `claude --version` exits 0
+// when present. This only confirms the CLI is on PATH — the user signs into their
+// plan through the CLI itself; the AI features surface an auth error if they haven't.
+let claudeAvail = null;
+function probeClaude() {
+  if (claudeAvail !== null) return Promise.resolve(claudeAvail);
+  return new Promise((resolve) => {
+    let done = false;
+    const fin = (v) => { if (!done) { done = true; claudeAvail = v; resolve(v); } };
+    let child; try { child = spawn('claude --version', { shell: true, stdio: 'ignore', env: shellEnv() }); } catch { return fin(false); }
+    const t = setTimeout(() => { try { child.kill(); } catch {} fin(false); }, 6000);
+    child.on('error', () => { clearTimeout(t); fin(false); });
+    child.on('close', (code) => { clearTimeout(t); fin(code === 0); });
+  });
+}
+
 // pull the first balanced JSON array/object out of model text
 function extractJson(text, wantArray) {
   if (typeof text !== 'string') return null;
@@ -999,6 +1016,14 @@ async function handleApi(req, res, url) {
   const seg = url.pathname.split('/').filter(Boolean); // ['api', ...]
 
   if (url.pathname === '/api/activity' && req.method === 'GET') return sendJson(res, 200, getActivity());
+
+  // ai-status — which CLIs are installed, so intake can guide the user. `?fresh=1`
+  // clears the cache so a "Re-check" picks up a just-finished install/sign-in.
+  if (url.pathname === '/api/ai-status' && req.method === 'GET') {
+    if (url.searchParams.get('fresh')) { claudeAvail = null; codexAvail = null; }
+    const [claude, codex] = await Promise.all([probeClaude(), probeCodex()]);
+    return sendJson(res, 200, { claude, codex, codexBin: CODEX_BIN || null });
+  }
 
   // notes
   if (url.pathname === '/api/notes' && req.method === 'GET') {

@@ -83,8 +83,16 @@ telemetry, nothing phoned home.
 
    It checks for Node.js, creates a shortcut/launcher, and opens Oasis.
 3. Oasis opens in its own window and runs a one-minute setup wizard: your name,
-   your projects folder, your default station, and your scene. That's it — it
-   builds itself around your preferences.
+   your projects folder, **connecting Claude & Codex**, your default station, and
+   your scene. That's it — it builds itself around your preferences.
+
+   The **Connect Claude & Codex** step checks whether the `claude` and `codex`
+   CLIs are installed and shows you, live, whether Ask / Ideas / the briefing and
+   the relay are ready. If one isn't found it gives you the one-line install
+   command; install or sign in, hit **Re-check**, and you're set. There are no
+   API keys to paste — Oasis just calls the CLI you're already signed into, and
+   nothing about your plan leaves the machine. The step is optional; the rest of
+   Oasis works without it.
 
 After that, open Oasis any time from the **Oasis** shortcut (or
 `Launch Oasis.bat` on Windows / `Launch Oasis.command` on macOS). To change

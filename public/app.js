@@ -833,7 +833,26 @@ function timerInit() {
 }
 
 /* ================= setup wizard / preferences ================= */
-let suStep = 0, suMax = 5, suPrefs = false, suSel = { bank: 'lofi', phase: 'auto' };
+let suStep = 0, suMax = 6, suPrefs = false, suSel = { bank: 'lofi', phase: 'auto' };
+const SETUP_AI_STEP = 2;
+let aiStatusLoaded = false;
+function aiStatusRow(name, ok, okText, badHtml) {
+  return `<div class="su-ai-row ${ok ? 'ok' : 'no'}"><span class="su-ai-dot"></span><div class="su-ai-body"><div class="su-ai-name">${name}<span class="su-ai-state">${ok ? okText : 'not found'}</span></div>${ok ? '' : `<div class="su-ai-help">${badHtml}</div>`}</div></div>`;
+}
+function renderAiStatus(s) {
+  const claudeHelp = 'Install with <code>npm i -g @anthropic-ai/claude-code</code>, then run <code>claude</code> once to sign in to your plan.';
+  const codexHelp = 'Optional — powers the Claude&nbsp;&times;&nbsp;Codex relay. Install with <code>npm i -g @openai/codex</code>, then run <code>codex</code> to sign in.';
+  $('#su-ai').innerHTML =
+    aiStatusRow('Claude', !!s.claude, 'ready — Ask, Ideas &amp; briefing', claudeHelp) +
+    aiStatusRow('Codex', !!s.codex, 'ready — relay enabled', codexHelp);
+}
+async function checkAiStatus(fresh) {
+  $('#su-ai').innerHTML = '<div class="su-ai-checking">Checking…</div>';
+  try {
+    const s = await (await fetch('/api/ai-status' + (fresh ? '?fresh=1' : ''))).json();
+    renderAiStatus(s); aiStatusLoaded = true;
+  } catch { $('#su-ai').innerHTML = '<div class="su-ai-checking">Couldn\'t check right now.</div>'; }
+}
 function renderSetupChoices() {
   $('#su-sound').innerHTML = [
     { v: 'lofi', name: 'Lo-Fi hip hop', tag: 'beats to focus to' },
@@ -850,10 +869,11 @@ function showStep(n) {
   $$('.setup-step').forEach((s) => s.classList.toggle('active', +s.dataset.step === suStep));
   $('#su-back').style.visibility = suStep === 0 ? 'hidden' : 'visible';
   $('#su-next').textContent = suStep === suMax - 1 ? (suPrefs ? 'Save' : 'Enter Oasis') : 'Continue';
+  if (suStep === SETUP_AI_STEP && !aiStatusLoaded) checkAiStatus(false);
   renderSetupChoices();
 }
 function openSetup(prefs) {
-  suPrefs = prefs; suStep = 0;
+  suPrefs = prefs; suStep = 0; aiStatusLoaded = false;
   $('#su-name').value = cfg.name || '';
   $('#su-builddir').value = cfg.buildDir || '';
   $('#su-builddir').placeholder = cfg.defaultBuildDir || 'C:\\Users\\you\\Documents\\build';
@@ -883,6 +903,7 @@ function setupInit() {
   $('#su-back').addEventListener('click', () => showStep(suStep - 1));
   $('#su-sound').addEventListener('click', (e) => { const b = e.target.closest('[data-sound]'); if (b) { suSel.bank = b.dataset.sound; renderSetupChoices(); } });
   $('#su-phase').addEventListener('click', (e) => { const b = e.target.closest('[data-phase]'); if (b) { suSel.phase = b.dataset.phase; renderSetupChoices(); } });
+  $('#su-ai-recheck').addEventListener('click', () => checkAiStatus(true));
   $('#su-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#su-next').click(); });
 }
 

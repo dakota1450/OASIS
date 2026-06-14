@@ -96,6 +96,7 @@ All responses are JSON via `sendJson`. POST/PATCH bodies are parsed by `readBody
 | Method + path | Purpose |
 | ------------- | ------- |
 | `GET /api/activity` | Merged, cached (15s) feed of recent Claude + Codex sessions. |
+| `GET /api/ai-status` | Which CLIs are installed: `{claude, codex, codexBin}` (cached probes; `?fresh=1` re-checks after an install/sign-in). Powers the intake "Connect Claude & Codex" step. |
 | `GET /api/notes` · `POST /api/notes` · `PATCH /api/notes/:id` · `DELETE /api/notes/:id` | Ideas CRUD. PATCH accepts `{pinned?, text?, status?}`. |
 | `POST /api/ask` | Freeform answer via `claude -p`; appends to ask-history. |
 | `GET /api/ask-history` · `DELETE /api/ask-history` · `DELETE /api/ask-history/:id` | Ask history. |

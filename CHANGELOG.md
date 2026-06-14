@@ -8,6 +8,13 @@ the first tag.
 ## [Unreleased]
 
 ### Added
+- **Connect Claude & Codex at intake.** The setup wizard gains a step that
+  detects whether the `claude` and `codex` CLIs are installed and shows, live,
+  whether Ask / Ideas / the daily briefing and the relay are ready. If one isn't
+  found it gives the one-line install command and the sign-in step; a **Re-check**
+  button re-probes after you install or log in. No API keys are entered — Oasis
+  calls the CLI you're already signed into, and nothing about your plan leaves the
+  machine. Backed by `GET /api/ai-status` (cached probes, `?fresh=1` to re-check).
 - **YouTube in the music panel.** A new **YouTube** tab alongside Lo-Fi, Ambient,
   and Spotify. Paste any YouTube video, playlist, or mix link (also `youtu.be`,
   `music.youtube.com`, `/shorts`, `/live`, or a bare id) and it plays the audio
