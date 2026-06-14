@@ -71,11 +71,11 @@
   <section id="ask">
     <form id="ask-form" autocomplete="off">
       <span class="ask-ico"><svg class="ic"><use href="#i-search"></use></svg></span>
-      <input id="ask-input" type="text" placeholder="Ask anything, or capture a thought…" spellcheck="false">
+      <input id="ask-input" type="text" placeholder="Ask anything, or capture a thought…" spellcheck="false" title="Ask anything — press / to jump here, Enter to ask">
       <button type="button" id="ask-ideas" title="Brainstorm ideas">Ideas</button>
       <button type="submit" id="ask-go" title="Ask"><svg class="ic"><use href="#i-send"></use></svg></button>
     </form>
-    <div id="ask-answer"></div>
+    <div id="ask-answer" aria-live="polite"></div>
   </section>
 
   <!-- LEFT PANEL: Today | Ideas -->
@@ -125,7 +125,7 @@
 
   <!-- bottom: activity ticker + dock -->
   <footer id="dockbar">
-    <div id="ticker" title="Recent agent work — click to see all"><span class="tk-text"></span></div>
+    <div id="ticker" role="button" tabindex="0" aria-label="Recent agent work — open the full list" title="Recent agent work — click to see all"><span class="tk-text"></span></div>
     <div id="dock"></div>
   </footer>
 
@@ -209,7 +209,7 @@
       <input id="palette-input" type="text" placeholder="A command — ask, launch, focus, write, set the scene…" spellcheck="false" autocomplete="off">
     </div>
     <div id="palette-list" class="pal-list"></div>
-    <div class="pal-foot"><span><b>↑↓</b> move</span><span><b>↵</b> run</span><span><b>esc</b> close</span></div>
+    <div class="pal-foot"><span><b>↑↓</b> move</span><span><b>↵</b> run</span><span><b>esc</b> close</span><span><b>Ctrl K</b> palette</span><span><b>Ctrl '</b> recent asks</span><span><b>/</b> ask</span></div>
   </div>
 </div>
 
@@ -271,7 +271,7 @@
 </div>
 
 <!-- lightbox -->
-<div id="lightbox" class="hidden">
+<div id="lightbox" class="hidden" role="dialog" aria-modal="true" aria-label="Image viewer">
   <div class="lb-shade"></div>
   <figure class="lb-frame">
     <img id="lb-img" alt="">
@@ -297,12 +297,12 @@
 
 <div id="toast"></div>
 
-<nav id="scene" title="Time of day">
-  <button data-phase="auto" class="active">Auto</button>
-  <button data-phase="dawn">Dawn</button>
-  <button data-phase="day">Day</button>
-  <button data-phase="dusk">Dusk</button>
-  <button data-phase="night">Night</button>
+<nav id="scene" title="Time of day" aria-label="Backdrop time of day">
+  <button data-phase="auto" class="active" aria-label="Backdrop: follow the clock">Auto</button>
+  <button data-phase="dawn" aria-label="Backdrop: dawn">Dawn</button>
+  <button data-phase="day" aria-label="Backdrop: day">Day</button>
+  <button data-phase="dusk" aria-label="Backdrop: dusk">Dusk</button>
+  <button data-phase="night" aria-label="Backdrop: night">Night</button>
 </nav>
 
 <!-- ======= first-run setup / preferences ======= -->

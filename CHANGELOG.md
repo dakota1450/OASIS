@@ -85,6 +85,28 @@ the first tag.
   the real looping ocean video.
 
 ### Fixed
+- **UX hardening pass (from a multi-agent audit).** A batch of papercuts:
+  - **Panels fail loudly, not silently.** Ideas / Today / Journal / dock loaders
+    now show an inline "couldn't load" message (or a toast) instead of a blank or
+    stale panel when a fetch fails, and writes (save idea/task/journal) surface a
+    toast if the save didn't take.
+  - **Escape closes everything.** The Setup/Preferences modal (which was a trap —
+    only Back/Continue) and the embedded terminal dock now close on Escape and, for
+    Preferences, on shade-click — matching every other panel.
+  - **Keyboard & screen-reader access.** A global `:focus-visible` ring makes the
+    focused control visible for keyboard users; the activity ticker and gallery
+    thumbnails are now real, Enter/Space-activatable buttons; scene buttons got
+    `aria-label`s, the answer area an `aria-live` region, and the lightbox a dialog
+    role. The hidden shortcuts (Ctrl+K, Ctrl+', /) are now listed in the palette.
+  - **Safer deletes & clearer feedback.** "Clear all ask history" now confirms
+    first; idea/task/journal/relay deletes show a toast.
+  - **Remembers where you were.** The left panel (Today/Ideas), the music tab, and
+    the relay mode persist across reloads; the gallery shows a "Loading…" state.
+  - **Smaller things:** the terminal WebSocket now reports connection errors; a
+    dropped relay connection shows a "retrying…" note instead of freezing; relay
+    polling sleeps with the rest of the app when the tab is hidden; and several
+    controls (Spotify/YouTube Play, scene picker, saved-YouTube chips) gained the
+    hover/focus states they were missing.
 - **Ask answers can be dismissed.** The center answer area (answers, idea cards,
   and the daily briefing) had no close control, so once triggered it stayed put
   and crowded the dashboard. Every answer now carries a dismiss (×) button, and
