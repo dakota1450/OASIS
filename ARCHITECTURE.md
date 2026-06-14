@@ -97,6 +97,9 @@ All responses are JSON via `sendJson`. POST/PATCH bodies are parsed by `readBody
 | ------------- | ------- |
 | `GET /api/activity` | Merged, cached (15s) feed of recent Claude + Codex sessions. |
 | `GET /api/ai-status` | Which CLIs are installed: `{claude, codex, codexBin}` (cached probes; `?fresh=1` re-checks after an install/sign-in). Powers the intake "Connect Claude & Codex" step. |
+| `GET /api/version` | `{version, isGit}` — the running version + whether this is a git checkout. |
+| `GET /api/update/check` | User-initiated: fetches the published `docs/version.json` over https and returns `{ok, current, latest, updateAvailable, notes, downloadUrl, isGit}`. The only place that compares versions (`cmpVer`). |
+| `POST /api/update/apply` | git checkout → `git pull --ff-only` (returns output, `restartNeeded`); a downloaded copy → `{ok:false, manual:true}` (the page opens `downloadUrl`). |
 | `GET /api/notes` · `POST /api/notes` · `PATCH /api/notes/:id` · `DELETE /api/notes/:id` | Ideas CRUD. PATCH accepts `{pinned?, text?, status?}`. |
 | `POST /api/ask` | Freeform answer via `claude -p`; appends to ask-history. |
 | `GET /api/ask-history` · `DELETE /api/ask-history` · `DELETE /api/ask-history/:id` | Ask history. |
