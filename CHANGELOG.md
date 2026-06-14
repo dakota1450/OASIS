@@ -85,6 +85,14 @@ the first tag.
   the real looping ocean video.
 
 ### Fixed
+- **Updates actually update now.** A downloaded copy used to only *open* the new
+  zip in the browser, so unless you manually replaced the folder a restart reran
+  the old version. **Update now** now applies in place: the app fetches the latest
+  zip, unpacks it with the OS's own tool, and overwrites its program files —
+  **preserving your `data/` and `assets/`** — so the next restart runs the new
+  version. (A git checkout still updates via `git pull`.) The marketing-page
+  download links are also version-stamped (`?v=…`) so a re-download is never served
+  a stale, same-named zip from the browser/CDN cache.
 - **UX hardening pass (from a multi-agent audit).** A batch of papercuts:
   - **Panels fail loudly, not silently.** Ideas / Today / Journal / dock loaders
     now show an inline "couldn't load" message (or a toast) instead of a blank or

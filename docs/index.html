@@ -429,6 +429,15 @@
   var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   if(reduce) document.body.classList.add('no-motion');
 
+  /* ---------- downloads: stamp the published version onto the links so a re-download
+       is never served stale from the browser/CDN cache (same filename otherwise) ---------- */
+  fetch('./version.json', { cache: 'no-store' }).then(function(r){ return r.json(); }).then(function(v){
+    if(!v || !v.version) return;
+    var win = document.getElementById('dlWin'), mac = document.getElementById('dlMac');
+    if(win){ win.href = './download/Oasis-Windows.zip?v=' + v.version; var ws = win.querySelector('.os'); if(ws) ws.textContent += ' · v' + v.version; }
+    if(mac){ mac.href = './download/Oasis-macOS.zip?v=' + v.version; var ms = mac.querySelector('.os'); if(ms) ms.textContent += ' · v' + v.version; }
+  }).catch(function(){});
+
   /* ---------- video: autoplay assist + the one dusk turn ---------- */
   var sea = document.getElementById('sea');
   var day = document.getElementById('sea-day');
