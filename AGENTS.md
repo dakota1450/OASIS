@@ -87,9 +87,15 @@ target hardware. Breaking one is a regression even if the app still "works."
 - **Node 18+.** Don't use APIs newer than the Node 18 baseline without a reason.
 - **Server binds `127.0.0.1` only**, port `Number(process.env.PORT) || 7777`.
   Never bind `0.0.0.0` or otherwise expose it on the network.
-- **No external network at runtime.** No CDNs, no web fonts, no analytics, no
-  outbound calls except (a) the user-initiated image import from an `https` URL
-  and (b) the local `claude` CLI. `fetch` in the frontend is same-origin only.
+- **No external network at runtime, except user-initiated media.** No CDNs, no
+  web fonts, no analytics, nothing phoned home. The only outbound traffic is
+  things the user explicitly asks for: (a) the image import from an `https` URL,
+  (b) the local `claude` / `codex` CLIs, and (c) the **music panel** — internet
+  radio streams, and the optional Spotify and YouTube integrations (Spotify
+  embeds + PKCE OAuth to the user's own Spotify; `youtube-nocookie.com` embeds
+  for pasted/saved links). Those media integrations are the only cross-origin
+  `fetch`/embed targets; everything else in the frontend is same-origin only.
+  Don't add new outbound calls beyond this set without surfacing it (see §10).
 - **No telemetry, ever.** Nothing about the user leaves the machine.
 - **Performance target = ThinkPad T570 with integrated graphics.** No
   `filter: blur()` on large or animated elements. `backdrop-filter` on the
@@ -161,10 +167,16 @@ project. A Today todo can be "handed to Claude" — it opens a `claude` terminal
 the project with the task staged, sent into Claude on a click.
 
 State is JSON files in `data/`, read/written through `readJson` / `writeJson`.
-AI features shell out to the local `claude` CLI via `runClaude`. The activity
-ticker reads Claude Code session logs (`~/.claude/projects/**/*.jsonl`) and the
-Codex session index (`~/.codex/session_index.jsonl`); the gallery scans
-`~/.codex/generated_images` and `<app>/assets`.
+AI features shell out to the local `claude` CLI via `runClaude` (and, for the
+relay, the `codex` CLI via `runCodex`). The **relay** (`/api/relay`) is a
+background job that runs Claude and Codex against each other on one task —
+plan→build→refine→synthesise, or debate→verdict — passing a shared transcript
+between turns; `runCodex` uses `codex exec` in a **read-only sandbox** with the
+prompt over stdin, and the whole thing degrades to a Claude-only run if `codex`
+isn't installed. The activity ticker reads Claude Code session logs
+(`~/.claude/projects/**/*.jsonl`) and the Codex session index
+(`~/.codex/session_index.jsonl`); the gallery scans `~/.codex/generated_images`
+and `<app>/assets`.
 
 Full detail (request lifecycle, data model, every endpoint, the AI integration,
 the security guards) is in [`ARCHITECTURE.md`](ARCHITECTURE.md).
@@ -230,6 +242,9 @@ code, keep every one of these intact:
   `claude -p` with `{ shell: true }` and writes the prompt to `stdin` (then ends
   it — required, or `claude` blocks waiting for input). This keeps quotes,
   newlines, and braces off the command line. Do not move prompt text into args.
+  `runCodex` (the relay's second model) does the same — prompt over stdin — and
+  additionally pins `codex exec --sandbox read-only` so an orchestration turn can
+  never edit files or run commands. Keep both of those properties intact.
 - **Custom tool targets are sanitized.** `POST /api/tools` rejects targets
   containing `"`, `` ` ``, `$`, or line breaks before they're interpolated into a
   shell command.

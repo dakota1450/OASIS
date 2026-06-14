@@ -75,13 +75,15 @@ sensible empty seed.
 | `sparks.json`        | `[{at, seed, mode, items}]` (last 100) | Spark / develop |
 | `ask-history.json`   | `[{id, q, answer, at}]` (last 30) | Ask |
 | `briefings.json`     | `{ "<YYYY-MM-DD>": {insight, stats, generatedAt} }` | Daily briefing |
+| `relays.json`        | `[{id, task, mode, rounds, codexAvailable, status, turns:[…], startedAt, finishedAt}]` (last 20) | Relay (Claude × Codex) |
 | `tools.json`         | `[{id, name, target}]` (user-added dock entries) | Tool dock |
 | `config.json`        | preferences (see below) | Setup wizard / Settings |
 
 `config.json` is merged over `CONFIG_DEFAULTS` on read, so a partial or empty file
 always yields a working config. Keys: `name`, `buildDir`, `showActivity`,
-`defaultPhase` (`auto|dawn|day|dusk|night`), `radioBank` (`lofi|old|spotify|off`),
-`radioStation`, `autoplay`, `spotifyClientId`, `setupDone`.
+`defaultPhase` (`auto|dawn|day|dusk|night`), `radioBank` (`lofi|old|off`),
+`radioStation`, `spotifyClientId`, `ytSaved` (the user's saved YouTube
+playlists/mixes — `[{name,url}]`, sanitized server-side), `setupDone`.
 
 `data/` is **gitignored** — it's personal. The distributed zip ships its own
 fresh, empty `data/` (built by `package.ps1`).
@@ -100,6 +102,9 @@ All responses are JSON via `sendJson`. POST/PATCH bodies are parsed by `readBody
 | `GET /api/briefing` | One cached warm sentence per local day, with stats. |
 | `POST /api/spark` | Idea generation. Body `{seed, mode:'ideas'|'expand'|'imageprompt'}`. |
 | `GET /api/sparks` | Last 20 spark batches. |
+| `POST /api/relay` | Start a Claude × Codex relay. Body `{task, mode:'delegate'|'debate', rounds:1-3}`. Returns `{ok, id}`; runs as a background job. |
+| `GET /api/relay/:id` | Live job state (turns stream in as each model responds). |
+| `GET /api/relays` · `DELETE /api/relays/:id` | Relay history (summaries) / delete one. |
 | `GET /api/assets` · `POST /api/assets/import` · `POST /api/reveal` | Gallery list / import-from-URL / reveal-in-folder. |
 | `GET /asset/:id` | Image bytes for an asset (root-jailed, `Cache-Control: max-age=3600`). |
 | `GET /api/todos` · `POST /api/todos` · `POST /api/todos/reorder` · `PATCH /api/todos/:id` · `DELETE /api/todos/:id` | Today list. |
@@ -131,7 +136,43 @@ and `JSON.parse`s; shape is then validated; failure degrades to
 
 **Concurrency:** a single module-level `sparkBusy` flag serializes Ask, Spark, and
 briefing. A second concurrent request returns `429`. This keeps only one `claude`
-process alive at a time.
+process alive at a time. The relay (below) shares the same flag through
+`aiAcquire()`/`aiRelease()`: instead of `429`-ing it *waits* for the flag to clear
+before each turn, so a Claude turn and a Codex turn never run concurrently.
+
+## Relay — Claude × Codex orchestration
+
+Ask/Spark/briefing are single-shot. The **relay** runs the two CLIs *against each
+other* on one task so the pair beats either alone. `POST /api/relay` validates
+`{task, mode, rounds}`, probes whether `codex` is installed (`probeCodex`, cached),
+creates a job, and kicks `runRelay` off in the background; the page polls
+`GET /api/relay/:id` and renders turns as they land.
+
+- **`runCodex`** mirrors `runClaude` for the second model:
+  `codex exec --sandbox read-only --skip-git-repo-check`, prompt over **stdin**,
+  final message captured from a `--output-last-message` temp file (no fragile
+  stdout-log parsing); 300s timeout. The read-only sandbox means an orchestration
+  "thinking" turn can never edit files or run commands.
+- **Finding `codex`** (`findCodexBin`): the OpenAI desktop install hides the CLI
+  under `%LOCALAPPDATA%\OpenAI\Codex\bin\<version>\codex.exe` and off `PATH`. We
+  read the binary the app itself uses from `CODEX_CLI_PATH` in
+  `~/.codex/config.toml` (preferring the newest versioned build over the stale
+  top-level launcher, which can't parse the app's newer config), fall back to
+  known locations, and honour an `OASIS_CODEX_BIN` override. `shellEnv()` prepends
+  that folder to `PATH` for **both** the embedded terminal (so typing `codex`
+  works) and `runCodex`. `probeCodex` short-circuits to `true` when the binary is
+  found on disk.
+- **Steps** come from `relaySteps(mode, rounds)`. *Delegate*: Plan (Claude) →
+  `rounds ×` [Build (Codex) → Refine (Claude)] → Synthesis (Claude). *Debate*:
+  Opening → `rounds ×` [Counter (Codex) → Response (Claude)] → Verdict. Each
+  step's prompt embeds the running transcript (`relayTranscript`) and is told to
+  disagree when the partner is wrong — that's where the value is.
+- **Fallback:** if `codex` isn't installed, its steps run as Claude, each turn
+  flagged `fallback:true`, and the panel says so. The first step is `critical`
+  (abort the job if it errors); later errored turns are recorded and the relay
+  continues.
+- One relay at a time (`relayBusy` → `429`). Live jobs live in an in-memory
+  `RELAY_JOBS` map and are persisted to `relays.json` after every turn.
 
 ## Activity ingestion (read-only)
 
@@ -179,7 +220,7 @@ no build) and wires it to this socket. Terminals are tabs in a single **movable,
 resizable panel** (`#terminal-dock`, `position: fixed`). It opens docked along the
 bottom by default; the user drags it by the tab bar and resizes from side/corner
 handles (`.td-rz`), with the geometry clamped to the viewport and persisted to
-`localStorage` (`oasis_term_geo`). Each session is a tab with its own `.td-host`;
+`localStorage` (`oasis_term_geo_v2`). Each session is a tab with its own `.td-host`;
 only the active one is shown.
 
 **Hand a task to Claude.** Each open todo has a button (`runTaskWithClaude`) that
