@@ -34,7 +34,19 @@ guard in [§ Guards](#guards-in-the-code).
   login, `youtube-nocookie.com` embeds for pasted/saved links), and (d) a manual
   update check — a single `GET` of the public release manifest when the user
   clicks "Check for updates" (never automatic; the request carries nothing about
-  the user). No analytics, no beacons — nothing about *you* is ever sent anywhere.
+  the user), and (e) **voice control**, which uses the browser's built-in Web
+  Speech API only while the user is actively listening. No analytics, no beacons —
+  nothing about *you* is ever sent by Oasis anywhere.
+- **Voice is opt-in and the mic is only open while you're listening.** It is off
+  by default; the page requests microphone access the first time you enable it,
+  and listening stops when the tab is hidden. Oasis records nothing and stores no
+  audio — only the recognised text, used to run a command or as an Ask. Be aware
+  that in some browsers (Chrome/Edge) `SpeechRecognition` performs the
+  transcription on the browser maker's servers, so the captured audio leaves the
+  machine the same way streamed music does — a property of the browser, not of
+  Oasis. Spoken replies use the local OS voice (`speechSynthesis`). Voice and
+  shortcut preferences live in `localStorage` (`oasis_voice`, `oasis_keymap`),
+  never on the server.
 - **Personal data stays local and out of git.** `data/` (notes, todos, journal,
   ask history, briefings, config) and `assets/*` (imported images) are
   `.gitignore`d. The distributed zip ships **empty** data — `package.ps1` stages

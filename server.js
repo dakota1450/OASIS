@@ -32,7 +32,7 @@ const ROOT = __dirname;
 // docs/version.json (the update manifest), so the two can never drift. The update
 // CHECK is user-initiated only (no automatic outbound, nothing phoned home — see
 // SECURITY.md).
-const VERSION = '1.1.4';
+const VERSION = '1.2.0';
 const UPDATE_MANIFEST = process.env.OASIS_UPDATE_MANIFEST || 'https://dakota1450.github.io/OASIS/version.json';
 const PUBLIC_DIR = path.join(ROOT, 'public');
 const SITE_DIR = path.join(ROOT, 'docs');                // marketing page (also the GitHub Pages site)

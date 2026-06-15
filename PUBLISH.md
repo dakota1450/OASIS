@@ -7,11 +7,22 @@ folder GitHub Pages can serve straight from your `main` branch — no separate
 ```
 docs/
   index.html                   the Oasis landing page (interactive canvas sea)
+  install.sh                   macOS one-line installer (curl | bash — skips Gatekeeper)
   assets/                      hero images
   download/Oasis-Windows.zip   the packaged Windows app (built by Package Oasis.bat)
   download/Oasis-macOS.zip     the packaged macOS app
   .nojekyll                    tells Pages to serve the folder as-is
 ```
+
+> **macOS installs go through `docs/install.sh`**, surfaced on the page as
+> `curl -fsSL https://<you>.github.io/oasis/install.sh | bash`. This is the
+> Gatekeeper fix: a browser-downloaded zip is quarantined and recent macOS blocks
+> unsigned apps with no "Open Anyway", but `curl`-fetched files aren't quarantined.
+> `install.sh` is committed and served as-is (thanks to `.nojekyll`) — it must stay
+> **LF** (`.gitattributes` pins `*.sh`) or `bash` chokes on `\r`. If your GitHub
+> user/repo isn't `dakota1450/OASIS`, update the hard-coded URL in `install.sh`
+> (the `BASE` default), in `docs/index.html` (the copy-command block), and in
+> `README.md`.
 
 ## One-time publish
 

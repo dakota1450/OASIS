@@ -161,19 +161,20 @@ let asking = false, askGen = 0;
 function answerHead() { return `<div class="ans-head"><button class="ans-dismiss" data-act="dismiss" title="Dismiss (Esc)" aria-label="Dismiss">${icon('x')}</button></div>`; }
 function fillAnswer(html) { const box = $('#ask-answer'); box.onclick = null; box.classList.add('has-content'); box.innerHTML = answerHead() + html; return box; }
 function clearAnswer() { const box = $('#ask-answer'); askGen++; box.onclick = null; box.classList.remove('has-content'); box.innerHTML = ''; }
-async function ask(q) {
+async function ask(q, speakIt) {
   q = (q || '').trim();
   if (!q) { $('#ask-input').focus(); return; }
-  if (asking) { toast('Still thinking on the last one'); return; }
+  if (asking) { toast('Still thinking on the last one'); if (speakIt) voiceSay('Still thinking on the last one.'); return; }
   asking = true; const gen = ++askGen; $('#ask').classList.add('busy'); $('#ask-go').disabled = true; $('#ask-ideas').disabled = true;
   fillAnswer(`<div class="ans-card thinking"><span class="ripple-dots"><i></i><i></i><i></i></span>Thinking…</div>`);
   try {
     const r = await fetch('/api/ask', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ q }) });
     const data = await r.json();
     if (gen !== askGen) return;                                  // dismissed / superseded
-    if (!data.ok) { clearAnswer(); toast(data.error || 'No answer came back'); return; }
+    if (!data.ok) { clearAnswer(); toast(data.error || 'No answer came back'); if (speakIt) voiceSay("I couldn't reach the assistant."); return; }
     renderAnswer(q, data.answer);
-  } catch { if (gen === askGen) { clearAnswer(); toast("Couldn't reach the assistant"); } }
+    if (speakIt) voiceSay(data.answer, { followup: true });      // read the answer aloud; stay armed for a follow-up
+  } catch { if (gen === askGen) { clearAnswer(); toast("Couldn't reach the assistant"); if (speakIt) voiceSay("I couldn't reach the assistant."); } }
   finally { asking = false; $('#ask').classList.remove('busy'); $('#ask-go').disabled = false; $('#ask-ideas').disabled = false; }
 }
 function renderAnswer(q, answer) {
@@ -220,6 +221,7 @@ function renderIdeaCards(items) {
 function askInit() {
   $('#ask-form').addEventListener('submit', (e) => { e.preventDefault(); closeAllPops(); ask($('#ask-input').value); });
   $('#ask-ideas').addEventListener('click', () => { closeAllPops(); driftIdeas($('#ask-input').value.trim()); });
+  const askMic = $('#ask-dictate'); if (askMic) askMic.addEventListener('click', () => toggleDictation($('#ask-input'), 'Ask'));
   $('#ask-answer').addEventListener('click', (e) => { if (e.target.closest('[data-act="dismiss"]')) clearAnswer(); });
 }
 
@@ -415,6 +417,7 @@ function journalInit() {
     $$('#journal-mood button').forEach((x) => x.classList.toggle('sel', x.dataset.mood === journalMood));
   });
   $('#journal-save').addEventListener('click', saveJournalEntry);
+  const jMic = $('#journal-dictate'); if (jMic) jMic.addEventListener('click', () => toggleDictation($('#journal-input'), 'your journal'));
   $('#journal-input').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); saveJournalEntry(); } });
   $('#journal-list').addEventListener('click', async (e) => {
     const del = e.target.closest('.jdel'); if (!del) return;
@@ -819,6 +822,11 @@ function paletteActions() {
   ['auto', 'dawn', 'day', 'dusk', 'night'].forEach((p) => add('sun', `Scene: ${p[0].toUpperCase() + p.slice(1)}`, 'scene', () => { closePalette(); setPhaseControl(p); }, 'backdrop background time scene'));
   add('note', 'Music: play / pause', 'sound', () => { closePalette(); radioToggle(); }, 'radio lofi ambient');
   add('note', 'Open music', 'sound', () => { closePalette(); $('#player').classList.remove('collapsed'); }, 'radio');
+  add('mic', 'Talk to Oasis — push to talk', 'voice', () => { closePalette(); voicePushToTalk(); }, 'speak listen jarvis microphone command say voice');
+  add('mic', 'Voice: hands-free listening', 'voice', () => { closePalette(); toggleHandsFree(); }, 'wake word jarvis always on microphone hey voice');
+  add('feather', 'Dictate into a field', 'voice', () => { closePalette(); dictateDefault(); }, 'dictation speech to text transcribe write note voice type');
+  add('mic', 'Voice & wake-word settings', 'voice', () => { closePalette(); openConsole('voice'); }, 'jarvis speech configure assistant talk');
+  add('keyboard', 'Keyboard shortcuts', 'system', () => { closePalette(); openConsole('shortcuts'); }, 'keys bindings rebind hotkeys customize remap shortcut');
   add('settings', 'Preferences', 'system', () => { closePalette(); openSetup(true); }, 'settings config');
   add('refresh', 'Check for updates', 'system', () => { closePalette(); checkForUpdates(false); }, 'update upgrade version new release');
   add('save', 'Back up my data (export)', 'system', () => { closePalette(); exportData(); }, 'export backup download json save data archive');
@@ -1034,15 +1042,21 @@ function exportData() {
   } catch { window.open('/api/export', '_blank', 'noopener'); }
 }
 
-/* ================= global keyboard ================= */
+/* ================= global keyboard (driven by the keymap registry) ================= */
+function modalOpen() {
+  return paletteOpen() || consoleOpen() || relayOpen() || anyPopOpen() || !!$('#term-menu')
+    || !$('#setup').classList.contains('hidden') || !$('#gallery').classList.contains('hidden')
+    || !$('#lightbox').classList.contains('hidden');
+}
 function keyboardInit() {
   document.addEventListener('keydown', (e) => {
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); paletteOpen() ? closePalette() : openPalette(); return; }
-    if ((e.ctrlKey || e.metaKey) && e.key === "'") { e.preventDefault(); askPopEl ? closeAskPop() : openAskHistory(); return; }
+    if (capturingKey) return;                               // the rebind UI owns the keyboard right now
     if (e.key === 'Escape') {
       const tmenu = $('#term-menu'); if (tmenu) { tmenu.remove(); return; }
+      if (dictating) { endDictation(); return; }
       if (anyPopOpen()) return closeAllPops();
       if (paletteOpen()) return closePalette();
+      if (consoleOpen()) return closeConsole();
       if (relayOpen()) return closeRelay();
       if (!$('#lightbox').classList.contains('hidden')) return closeLightbox();
       if (!$('#gallery').classList.contains('hidden')) return closeGallery();
@@ -1053,10 +1067,16 @@ function keyboardInit() {
       if ($('#ask-answer').classList.contains('has-content')) return clearAnswer();
       return;
     }
-    const typing = /^(INPUT|TEXTAREA)$/.test(e.target.tagName);
     // Make non-button elements with role="button" keyboard-activatable (ticker, gallery thumbs).
     if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('[role="button"]')) { e.preventDefault(); e.target.click(); return; }
-    if (e.key === '/' && !typing && !paletteOpen()) { e.preventDefault(); $('#ask-input').focus(); }
+    if (e.key === 'Shift' || e.key === 'Control' || e.key === 'Alt' || e.key === 'Meta') return;
+    const chord = chordFromEvent(e);
+    const act = bindingIndex()[chord];
+    if (!act) return;
+    const global = chordIsGlobal(chord);                    // Mod/Alt combos fire even while typing
+    const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName) || e.target.isContentEditable;
+    if (!global && (typing || modalOpen())) return;         // leader keys stay out of fields and modals
+    e.preventDefault(); act.run();
   });
 }
 
@@ -1557,6 +1577,624 @@ function relayInit() {
   if (savedMode === 'debate' || savedMode === 'delegate') { relayMode = savedMode; $$('#rl-mode .rl-segbtn').forEach((x) => x.classList.toggle('active', x.dataset.mode === savedMode)); }
 }
 
+/* ================= keymap (customizable keyboard shortcuts) ================= */
+/* One registry of bindable actions → the dispatcher, the cheat sheet, and the
+   rebinding UI all read from it. A chord is canonicalised to tokens joined by
+   "+": "Mod" (Ctrl on win/linux, Cmd on mac), "Alt", "Shift", then the key.
+   Single-key ("leader") shortcuts only fire when you're NOT typing in a field;
+   anything with a command modifier (Mod/Alt) fires globally. Overrides live in
+   localStorage so they survive restarts and never touch the server. */
+const IS_APPLE = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '');
+const KEY_STORE = 'oasis_keymap';
+const KEY_DEFS = [
+  { id: 'palette',    group: 'General', label: 'Command palette',            def: 'Mod+K',  run: () => (paletteOpen() ? closePalette() : openPalette()) },
+  { id: 'cheatsheet', group: 'General', label: 'Keyboard shortcuts',         def: '?',      run: () => openConsole('shortcuts') },
+  { id: 'voiceSet',   group: 'General', label: 'Voice & wake-word settings',  def: 'Mod+;', run: () => openConsole('voice') },
+  { id: 'prefs',      group: 'General', label: 'Preferences',                def: 'Mod+,',  run: () => openSetup(true) },
+  { id: 'focusAsk',   group: 'Ask',     label: 'Jump to Ask',                def: '/',      run: () => { closeAllPops(); $('#ask-input').focus(); } },
+  { id: 'askHistory', group: 'Ask',     label: 'Recent asks',               def: "Mod+'",  run: () => (askPopEl ? closeAskPop() : openAskHistory()) },
+  { id: 'ideasGen',   group: 'Ask',     label: 'Brainstorm ideas',           def: 'Mod+E',  run: () => driftIdeas($('#ask-input').value.trim()) },
+  { id: 'briefing',   group: 'Ask',     label: 'Daily briefing',             def: 'B',      run: () => showBriefing() },
+  { id: 'voicePTT',   group: 'Voice',   label: 'Talk to Oasis (push to talk)', def: 'Mod+/', run: () => voicePushToTalk() },
+  { id: 'voiceWake',  group: 'Voice',   label: 'Toggle hands-free listening', def: 'Shift+V', run: () => toggleHandsFree() },
+  { id: 'dictate',    group: 'Voice',   label: 'Dictate into a field',        def: 'D',      run: () => dictateDefault() },
+  { id: 'goToday',    group: 'Capture', label: 'Today — capture a task',      def: 'T',     run: () => { showTab('today'); $('#today-input').focus(); } },
+  { id: 'goIdeas',    group: 'Capture', label: 'Ideas — capture an idea',     def: 'I',     run: () => { showTab('ideas'); $('#ideas-input').focus(); } },
+  { id: 'goJournal',  group: 'Capture', label: 'New journal entry',           def: 'J',     run: () => $('#journal-input').focus() },
+  { id: 'timer',      group: 'Workspace', label: 'Focus timer',              def: 'F',      run: () => toggleTimer() },
+  { id: 'gallery',    group: 'Workspace', label: 'Gallery',                  def: 'G',      run: () => openGallery() },
+  { id: 'relay',      group: 'Workspace', label: 'Relay — Claude × Codex',   def: 'R',      run: () => openRelay() },
+  { id: 'terminal',   group: 'Workspace', label: 'Terminal',                 def: '`',      run: () => $('#btn-terminal').click() },
+  { id: 'music',      group: 'Workspace', label: 'Play / pause music',       def: 'M',      run: () => radioToggle() },
+  { id: 'scene',      group: 'Workspace', label: 'Cycle the backdrop scene', def: 'S',      run: () => cycleScene() },
+];
+let keyOverrides = {};
+let capturingKey = false;                              // true while the rebind UI is grabbing the next keypress
+function loadKeymap() { try { keyOverrides = JSON.parse(localStorage.getItem(KEY_STORE)) || {}; } catch { keyOverrides = {}; } }
+function saveKeymap() { try { localStorage.setItem(KEY_STORE, JSON.stringify(keyOverrides)); } catch {} }
+function bindingFor(id) { const def = KEY_DEFS.find((d) => d.id === id); return Object.prototype.hasOwnProperty.call(keyOverrides, id) ? keyOverrides[id] : (def ? def.def : ''); }
+let _bindIndex = null;
+function bindingIndex() {                              // chord → action (override wins; '' = unbound)
+  if (_bindIndex) return _bindIndex;
+  _bindIndex = {};
+  KEY_DEFS.forEach((d) => { const c = bindingFor(d.id); if (c) _bindIndex[c] = d; });
+  return _bindIndex;
+}
+function invalidateBindings() { _bindIndex = null; }
+
+function normKey(e) {
+  let k = e.key;
+  if (k === ' ' || k === 'Spacebar') return 'Space';
+  if (k.length === 1) return k.toUpperCase();          // 'k'→'K', '/'→'/', '?'→'?', "'"→"'"
+  return k;                                            // Enter, Tab, ArrowUp, Escape, F1…
+}
+function chordFromEvent(e) {
+  const k = normKey(e), mods = [];
+  if (e.ctrlKey || e.metaKey) mods.push('Mod');
+  if (e.altKey) mods.push('Alt');
+  const isLetter = /^[A-Z]$/.test(k), isNamed = k.length > 1;
+  if (e.shiftKey && (isLetter || isNamed)) mods.push('Shift');   // symbols/digits already encode shift
+  return [...mods, k].join('+');
+}
+const KEY_GLYPH = { Mod: IS_APPLE ? '⌘' : 'Ctrl', Alt: IS_APPLE ? '⌥' : 'Alt', Shift: '⇧', Space: 'Space', ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→', Enter: '↵', Escape: 'Esc', '`': '`' };
+function prettyChord(chord) {
+  if (!chord) return '—';
+  return chord.split('+').map((t) => KEY_GLYPH[t] || t).join(IS_APPLE ? '' : '+');
+}
+const chordIsGlobal = (chord) => chord.includes('Mod') || chord.includes('Alt');   // fires even while typing
+
+/* ================= voice — "Jarvis" (Web Speech: STT in, TTS out) ================= */
+/* Zero-dependency: the browser's own SpeechRecognition + speechSynthesis. Two
+   ways in: hands-free (always listening for your wake word) and push-to-talk
+   (click/hold the orb, or the shortcut — one capture). Recognised speech is
+   matched against a small command grammar; anything unrecognised becomes an Ask
+   (answered by your local claude CLI) and is read back aloud. Privacy: the mic
+   only opens while listening, nothing is recorded, and it's all opt-in. */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition || null;
+const SYNTH = window.speechSynthesis || null;
+const VOICE_STORE = 'oasis_voice';
+let voicePrefs = { handsFree: false, wake: 'oasis', speak: true, voiceURI: '', rate: 1, pitch: 1, volume: 1, beep: true, followup: true, autoPunct: true };
+let recog = null, recRunning = false, recWantOn = false, armed = false, armTimer = 0;
+let selfSpeaking = false, lastSpokeAt = 0, restartTimer = 0, hudHideTimer = 0;
+let lastSpokenText = '';                               // for "repeat that"
+// dictation: stream speech into a field instead of parsing commands
+let dictating = false, dictTarget = null, dictBase = '', dictRaw = [];
+
+function loadVoicePrefs() { try { voicePrefs = { ...voicePrefs, ...(JSON.parse(localStorage.getItem(VOICE_STORE)) || {}) }; } catch {} }
+function saveVoicePrefs() { try { localStorage.setItem(VOICE_STORE, JSON.stringify(voicePrefs)); } catch {} }
+const voiceSupported = () => !!SR;
+
+/* ---- the arc-reactor HUD ---- */
+const hud = {
+  el: () => $('#jarvis'),
+  state(s) { const el = hud.el(); if (!el) return; el.dataset.state = s; if (s !== 'idle' && s !== 'off') hud.show(); },
+  cap(text, kind) {
+    const c = $('#jarvis-cap'); if (!c) return;
+    c.textContent = text || '';
+    c.className = 'jv-cap' + (kind ? ' ' + kind : '') + (text ? ' on' : '');
+  },
+  show() { const el = hud.el(); if (!el) return; el.classList.remove('off'); clearTimeout(hudHideTimer); },
+  idleHide() {                                          // fade the orb out when nothing's happening (unless hands-free)
+    clearTimeout(hudHideTimer);
+    if (voicePrefs.handsFree) return;
+    hudHideTimer = setTimeout(() => { const el = hud.el(); if (el && !recRunning && !selfSpeaking) { el.classList.add('off'); hud.cap(''); hud.state('idle'); } }, 3200);
+  },
+};
+
+/* ---- text to speech ---- */
+function voiceList() { try { return SYNTH ? SYNTH.getVoices() : []; } catch { return []; } }
+function pickVoice() {
+  const vs = voiceList(); if (!vs.length) return null;
+  if (voicePrefs.voiceURI) { const m = vs.find((v) => v.voiceURI === voicePrefs.voiceURI); if (m) return m; }
+  return vs.find((v) => /^en[-_]/i.test(v.lang) && /female|samantha|zira|aria|jenny|google us/i.test(v.name))
+      || vs.find((v) => /^en[-_]/i.test(v.lang)) || vs[0];
+}
+// Strip markdown/code so the spoken version is clean prose; cap the length.
+function plainSpeech(s) {
+  return String(s || '')
+    .replace(/```[\s\S]*?```/g, ' (code) ')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+    .replace(/[*_#>]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim().slice(0, 700);
+}
+function voiceSay(text, opts) {
+  const s = plainSpeech(text); if (!s) return;
+  lastSpokenText = s;
+  hud.cap(s, 'reply');
+  if (!voicePrefs.speak || !SYNTH) { hud.idleHide(); maybeFollowUp(opts); return; }
+  try {
+    SYNTH.cancel();
+    const u = new SpeechSynthesisUtterance(s);
+    const v = pickVoice(); if (v) { u.voice = v; u.lang = v.lang; }
+    u.rate = voicePrefs.rate || 1; u.pitch = voicePrefs.pitch || 1; u.volume = voicePrefs.volume == null ? 1 : voicePrefs.volume;
+    u.onstart = () => { selfSpeaking = true; hud.state('speaking'); };
+    u.onend = u.onerror = () => { selfSpeaking = false; lastSpokeAt = Date.now(); hud.state(recRunning ? (armed ? 'armed' : 'listening') : 'idle'); hud.idleHide(); maybeFollowUp(opts); };
+    SYNTH.speak(u);
+  } catch {}
+}
+// After an answer (hands-free), briefly stay armed so a follow-up needs no wake word.
+function maybeFollowUp(opts) {
+  if (!opts || !opts.followup || !voicePrefs.followup || !voicePrefs.handsFree || !recRunning || dictating) return;
+  armed = true; hud.state('armed'); hud.cap('Listening for a follow-up…', 'hint');
+  clearTimeout(armTimer); armTimer = setTimeout(() => { armed = false; if (recRunning && !dictating) hud.state('listening'); }, 7000);
+}
+function stopSpeaking() { try { if (SYNTH) SYNTH.cancel(); } catch {} selfSpeaking = false; }
+
+/* ---- soft listening cue ---- */
+function voiceCue(up) {
+  if (!voicePrefs.beep) return;
+  try {
+    const AC = window.AudioContext || window.webkitAudioContext; const ac = new AC();
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(up ? 620 : 760, ac.currentTime); o.frequency.exponentialRampToValueAtTime(up ? 880 : 540, ac.currentTime + 0.12);
+    o.connect(g); g.connect(ac.destination);
+    g.gain.setValueAtTime(0.0001, ac.currentTime); g.gain.exponentialRampToValueAtTime(0.12, ac.currentTime + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + 0.22);
+    o.start(); o.stop(ac.currentTime + 0.24);
+  } catch {}
+}
+
+/* ---- recognition lifecycle ---- */
+function ensureRecog() {
+  if (recog || !SR) return recog;
+  recog = new SR();
+  recog.continuous = true; recog.interimResults = true;
+  try { recog.lang = navigator.language || 'en-US'; } catch {}
+  recog.onstart = () => { recRunning = true; hud.state(armed ? 'armed' : 'listening'); };
+  recog.onerror = (e) => {
+    const err = e && e.error;
+    if (err === 'not-allowed' || err === 'service-not-allowed') {
+      recWantOn = false; voicePrefs.handsFree = false; saveVoicePrefs(); syncVoiceUi();
+      hud.state('error'); hud.cap('Microphone blocked — allow mic access to use voice.', 'hint');
+      toast('Microphone access is blocked'); hud.idleHide();
+    }
+    // 'no-speech' / 'aborted' / 'audio-capture' are transient — onend handles restart.
+  };
+  recog.onend = () => {
+    recRunning = false;
+    if (recWantOn && !document.hidden) { clearTimeout(restartTimer); restartTimer = setTimeout(() => { try { recog.start(); } catch {} }, 350); }
+    else { hud.state('idle'); hud.idleHide(); }
+  };
+  recog.onresult = onRecResult;
+  return recog;
+}
+function onRecResult(e) {
+  if (selfSpeaking || Date.now() - lastSpokeAt < 450) return;     // ignore the assistant hearing itself
+  if (dictating) return onDictationResult(e);                     // dictation streams into a field, not the command parser
+  let interim = '', finalText = '';
+  for (let i = e.resultIndex; i < e.results.length; i++) {
+    const r = e.results[i];
+    if (r.isFinal) finalText += r[0].transcript; else interim += r[0].transcript;
+  }
+  if (interim) { hud.show(); hud.state(armed ? 'armed' : 'listening'); hud.cap(interim, 'heard'); }
+  if (!finalText.trim()) return;
+  const text = finalText.trim();
+  if (armed) { clearTimeout(armTimer); armed = false; handleUtterance(text, true); return; }
+  // hands-free wake-word gate
+  const wake = (voicePrefs.wake || 'oasis').toLowerCase().trim();
+  const low = text.toLowerCase();
+  const idx = wake ? low.indexOf(wake) : -1;
+  if (idx < 0) { hud.cap('', ''); return; }                       // ambient speech — ignore
+  const after = text.slice(idx + wake.length).replace(/^[\s,.:;!?-]+/, '').trim();
+  if (after) handleUtterance(after, false);
+  else { armed = true; voiceCue(true); hud.state('armed'); hud.cap('Yes?', 'hint'); clearTimeout(armTimer); armTimer = setTimeout(() => { armed = false; if (recRunning) hud.state('listening'); }, 7000); }
+}
+// Begin/stop the always-on stream (hands-free).
+function startListening() {
+  if (!voiceSupported()) { toast('Voice isn’t supported in this browser'); return false; }
+  ensureRecog(); recWantOn = true; hud.show();
+  if (!recRunning) { try { recog.start(); } catch {} }
+  return true;
+}
+function stopListening() {
+  recWantOn = false; armed = false; clearTimeout(restartTimer); clearTimeout(armTimer);
+  try { if (recog) recog.stop(); } catch {}
+  hud.state('idle'); hud.idleHide();
+}
+// Push-to-talk: one capture. If hands-free is already on, just arm the next phrase.
+function voicePushToTalk() {
+  if (!voiceSupported()) { toast('Voice isn’t supported in this browser'); return; }
+  if (dictating) { endDictation(); return; }                      // a tap ends dictation
+  if (selfSpeaking) { stopSpeaking(); return; }                   // barge-in
+  ensureRecog(); hud.show(); armed = true; recWantOn = true; voiceCue(true);
+  hud.state('armed'); hud.cap('Listening…', 'hint');
+  if (!recRunning) { try { recog.start(); } catch {} }
+  clearTimeout(armTimer); armTimer = setTimeout(() => { armed = false; if (!voicePrefs.handsFree) stopListening(); else if (recRunning) hud.state('listening'); }, 9000);
+}
+function toggleHandsFree() {
+  if (!voiceSupported()) { toast('Voice isn’t supported in this browser'); return; }
+  voicePrefs.handsFree = !voicePrefs.handsFree; saveVoicePrefs(); syncVoiceUi();
+  if (voicePrefs.handsFree) { startListening(); hud.cap('Hands-free on — say "' + (voicePrefs.wake || 'oasis') + '"', 'hint'); toast('Voice: hands-free on'); voiceSay('Listening.'); }
+  else { stopListening(); const el = hud.el(); if (el) el.classList.add('off'); toast('Voice: hands-free off'); }
+}
+function syncVoiceUi() {
+  const chip = $('#btn-voice'); if (chip) { chip.classList.toggle('run', voicePrefs.handsFree); chip.querySelector('use').setAttribute('href', voicePrefs.handsFree ? '#i-mic' : '#i-mic-off'); }
+  const hf = $('#cs-handsfree'); if (hf) hf.checked = voicePrefs.handsFree;
+}
+
+/* ---- command grammar ---- */
+const FILLER = /^(hey|hi|hello|ok|okay|yo|please|could you|can you|would you|will you|i want to|i'd like to|let's|lets)\b[\s,]*/i;
+function cleanCmd(raw) {
+  let t = String(raw || '').toLowerCase().replace(/[“”‘’]/g, "'").replace(/\s+/g, ' ').trim().replace(/[.?!,\s]+$/, '');
+  const wake = (voicePrefs.wake || '').toLowerCase().trim();
+  if (wake && t.startsWith(wake)) t = t.slice(wake.length).replace(/^[\s,.:;!?-]+/, '');
+  let prev; do { prev = t; t = t.replace(FILLER, ''); } while (t !== prev);
+  return t.trim();
+}
+const NUM_WORDS = { one: 1, two: 2, three: 3, four: 4, five: 5, ten: 10, fifteen: 15, twenty: 20, 'twenty five': 25, 'twenty-five': 25, thirty: 30, forty: 40, 'forty five': 45, 'forty-five': 45, fifty: 50, sixty: 60, ninety: 90 };
+function parseMinutes(s) {
+  if (/half an hour|half hour/.test(s)) return 30;
+  if (/an hour|one hour|1 hour/.test(s)) return 60;
+  const d = s.match(/(\d{1,3})/); if (d) return Math.max(1, Math.min(180, +d[1]));
+  // longest phrase first so "forty five" beats the "five" inside it
+  for (const w of Object.keys(NUM_WORDS).sort((a, b) => b.length - a.length)) if (new RegExp('\\b' + w + '\\b').test(s)) return NUM_WORDS[w];
+  return 0;
+}
+// Perform a recognised command. `direct` = came via PTT/armed (wake word not required).
+function handleUtterance(raw, direct) {
+  const said = String(raw || '').trim();
+  hud.cap(said, 'heard');
+  const t = cleanCmd(said);
+  if (!t) return;
+
+  const reply = (s) => voiceSay(s);
+  const m = (re) => t.match(re);
+
+  if (/^(stop|cancel|quiet|silence|never mind|shush|shut up|stop talking|that's all|thanks?|thank you)\b/.test(t)) {
+    stopSpeaking();
+    if (/thank/.test(t)) reply('Anytime.'); else hud.cap('Okay.', 'reply');
+    if (armed) { armed = false; }
+    return;
+  }
+  if (/^(hello|hi|hey|good (morning|afternoon|evening)|you there|are you there|wake up)\b/.test(t)) { reply(greetLine()); return; }
+  if (/^(help|what can (you|i) (do|say)|commands?)\b/.test(t)) { openConsole('voice'); reply('You can ask me anything, capture tasks, ideas or journal notes, start a timer, brief your day, or open any panel. The full list is on screen.'); return; }
+  if (/\bwhat('s| is) the time\b|\bwhat time is it\b|\btell me the time\b/.test(t)) { reply('It’s ' + new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) + '.'); return; }
+  if (/\bwhat('s| is) (the |today'?s )?date\b|\bwhat day is it\b/.test(t)) { reply('Today is ' + new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' }) + '.'); return; }
+
+  let g;
+  if ((g = m(/^(?:add|new|create|make|set)?\s*(?:a\s+)?(?:focus\s+)?timer(?:\s+for)?\s*(.*)$/)) || (g = m(/^focus(?:\s+for)?\s+(.*)$/)) || (g = m(/^(?:set|start)\s+(?:a\s+)?(.*?)\s*(?:minute|min)\s*(?:timer|focus)?$/))) {
+    if (/^(stop|pause|cancel|end|off)/.test(g[1] || '') || /\b(stop|pause|cancel) (the )?timer\b/.test(t)) { stopTimer(false); reply('Timer paused.'); return; }
+    const mins = parseMinutes(g[1] || t) || 25; startTimer(mins); reply(`Focus timer started — ${mins} minutes.`); return;
+  }
+  if (/\b(stop|pause|cancel|end) (the )?timer\b/.test(t)) { stopTimer(false); reply('Timer stopped.'); return; }
+
+  if ((g = m(/^(?:add|new|create|make)\s+(?:a\s+)?task[:\s]+(.+)$/)) || (g = m(/^(?:remind me to|i need to|todo|to-do)[:\s]+(.+)$/)) || (g = m(/^task[:\s]+(.+)$/))) {
+    const txt = tidy(g[1]); if (txt) { addTask(txt.length > 90 ? txt.slice(0, 89) + '…' : txt); reply('Added to Today: ' + txt); } return;
+  }
+  if ((g = m(/^(?:new idea|capture(?:\s+idea)?|remember|note to self|idea)[:\s]+(.+)$/))) {
+    const txt = tidy(g[1]); if (txt) { keepIdea(txt, 'me'); reply('Saved that idea.'); } return;
+  }
+  if ((g = m(/^(?:journal|log|diary)[:\s]+(.+)$/)) || (g = m(/^(?:note|write down)[:\s]+(.+)$/))) {
+    const txt = tidy(g[1]); if (txt) { addJournal(txt, ''); reply('Logged in your journal.'); } return;
+  }
+  if (/^(brainstorm|ideas?|give me ideas|inspire me)\b/.test(t)) {
+    const seed = tidy(t.replace(/^(brainstorm|ideas?|give me ideas|inspire me)\b/, '').replace(/^(about|on|for|around)\b/, '').trim());
+    if (seed) $('#ask-input').value = seed;
+    driftIdeas(seed); reply('Brainstorming a few ideas.'); return;
+  }
+  if (/\b(brief me|briefing|how('s| is) my day|catch me up|my day|status report)\b/.test(t)) { showBriefing(); hud.state('thinking'); reply('Here’s your day so far.'); return; }
+
+  if (/\b(gallery|images|pictures)\b/.test(t)) { openGallery(); reply('Opening the gallery.'); return; }
+  if (/\b(relay|claude (and|×|x) codex)\b/.test(t)) {
+    const task = tidy(t.replace(/^.*?\brelay\b[:\s]*/, '')); openRelay();
+    if (task) { $('#rl-task').value = task; reply('Relay ready — hit run when you are.'); } else reply('Opening the relay.'); return;
+  }
+  if (/\b(terminal|shell|console window)\b/.test(t)) { $('#btn-terminal').click(); reply('Opening a terminal.'); return; }
+  if (/\b(shortcuts|key ?bindings?|keyboard)\b/.test(t)) { openConsole('shortcuts'); reply('Here are your shortcuts.'); return; }
+  if (/\b(preferences|settings)\b/.test(t)) { openSetup(true); reply('Opening preferences.'); return; }
+
+  if (/\b(pause|stop) (the )?music\b/.test(t)) { const a = $('#radio-audio'); if (a && !a.paused) a.pause(); else { stopSpeaking(); } reply('Music paused.'); return; }
+  if (/\b(play|start|resume) (some )?(music|lo-?fi|tunes|radio|beats)\b/.test(t)) { const a = $('#radio-audio'); if (a && a.paused) radioToggle(); reply('Playing music.'); return; }
+
+  if ((g = m(/\b(?:set |make )?(?:the )?(?:scene|backdrop|theme)?\s*(dawn|day|dusk|night|auto)\b/)) || (g = m(/\bmake it (dark|night|day|bright|morning|evening)\b/))) {
+    const map = { dark: 'night', bright: 'day', morning: 'dawn', evening: 'dusk' };
+    const p = map[g[1]] || g[1]; setPhaseControl(p); reply('Scene set to ' + p + '.'); return;
+  }
+
+  // ---- dictation: stream speech into a field ----
+  if (m(/^(take (a |some )?(note|dictation)|dictate|start dictation|compose|begin dictation)\b/)) {
+    let tgt = $('#journal-input'), label = 'your journal';
+    if (/\b(ask|search|question)\b/.test(t)) { tgt = $('#ask-input'); label = 'Ask'; }
+    else if (/\b(task|to-?do|today)\b/.test(t)) { showTab('today'); tgt = $('#today-input'); label = 'a task'; }
+    else if (/\b(idea)\b/.test(t)) { showTab('ideas'); tgt = $('#ideas-input'); label = 'an idea'; }
+    voiceSay('Go ahead.'); startDictation(tgt, label); return;
+  }
+
+  // ---- read-back ----
+  if (/\bwhat('s| is) next\b|\bnext task\b|\bwhat should i do next\b/.test(t)) { speakTasks(true); return; }
+  if (/\b(read|run down|run through|go over|recap|review)\b.*\b(task|to-?do|plate|agenda|list)\b/.test(t) || /\bwhat('s| is) on my (plate|list|agenda)\b/.test(t) || /\bwhat do i (have|need) to do\b/.test(t)) { speakTasks(false); return; }
+  if (/\b(read|recap|go over|review)\b.*\b(idea|note)s?\b/.test(t)) { speakIdeas(); return; }
+  if (/\b(repeat that|say (that|it) again|read (that|it) (back|again)|what did you say|come again)\b/.test(t)) { if (lastSpokenText) voiceSay(lastSpokenText); else reply("I haven't said anything yet."); return; }
+
+  // ---- live voice tuning ----
+  if (/\b(faster|speed up|quicker|speak quicker)\b/.test(t)) { voicePrefs.rate = Math.min(1.6, (voicePrefs.rate || 1) + 0.15); saveVoicePrefs(); syncVoiceSliders(); reply('Speaking faster.'); return; }
+  if (/\b(slower|slow down|speak slower)\b/.test(t)) { voicePrefs.rate = Math.max(0.6, (voicePrefs.rate || 1) - 0.15); saveVoicePrefs(); syncVoiceSliders(); reply('Slowing down.'); return; }
+  if (/\b(louder|speak up|volume up)\b/.test(t)) { voicePrefs.volume = Math.min(1, (voicePrefs.volume == null ? 1 : voicePrefs.volume) + 0.2); saveVoicePrefs(); reply('Louder.'); return; }
+  if (/\b(quieter|softer|volume down|lower your voice|tone it down)\b/.test(t)) { voicePrefs.volume = Math.max(0.15, (voicePrefs.volume == null ? 1 : voicePrefs.volume) - 0.2); saveVoicePrefs(); reply('Quieter.'); return; }
+
+  // ---- complete a task by voice ----
+  if ((g = m(/^(?:mark|complete|finish|check off|cross off|tick off)\s+(.+)$/))) { completeTaskByVoice(g[1]); return; }
+
+  if ((g = m(/^(?:launch|open|start|run|fire up)\s+(.+)$/))) {
+    const want = tidy(g[1]).toLowerCase();
+    const tool = (dockTools || []).find((x) => x.name.toLowerCase() === want) || (dockTools || []).find((x) => x.name.toLowerCase().includes(want) || want.includes(x.name.toLowerCase()));
+    if (tool) { launchTool(tool.id, primaryAction(tool)); reply('Launching ' + tool.name + '.'); return; }
+    // fall through to Ask if no tool matched
+  }
+
+  // default: treat it as a question for the assistant, and read the answer aloud
+  $('#ask-input').value = said; hud.state('thinking'); voiceAsk(said);
+}
+const tidy = (s) => String(s || '').replace(/\s+/g, ' ').trim().replace(/^[a-z]/, (c) => c.toUpperCase());
+function greetLine() { const h = new Date().getHours(); const who = cfg.name ? ', ' + cfg.name : ''; const g = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'; return `${g}${who}. How can I help?`; }
+function voiceAsk(q) { ask(q, true); }
+function syncVoiceSliders() { const r = $('#cs-rate'); if (r) r.value = voicePrefs.rate; const p = $('#cs-pitch'); if (p) p.value = voicePrefs.pitch; }
+
+/* ---- read-back helpers (spoken lists, drawn from the live data) ---- */
+async function speakTasks(onlyNext) {
+  try {
+    const todos = await (await fetch('/api/todos')).json();
+    const open = (todos || []).filter((x) => !x.done);
+    if (!open.length) { voiceSay('Your task list is clear — nothing open.'); return; }
+    if (onlyNext) { voiceSay('Next up: ' + open[0].text); return; }
+    const top = open.slice(0, 5).map((x, i) => `${i + 1}. ${x.text}`).join('. ');
+    voiceSay(`You have ${open.length} open task${open.length === 1 ? '' : 's'}. ${top}.`);
+  } catch { voiceSay("I couldn't read your tasks."); }
+}
+async function speakIdeas() {
+  try {
+    const notes = await (await fetch('/api/notes')).json();
+    if (!notes || !notes.length) { voiceSay('No ideas captured yet.'); return; }
+    const top = notes.slice(0, 5).map((n, i) => `${i + 1}. ${n.text}`).join('. ');
+    voiceSay(`Your latest ideas: ${top}.`);
+  } catch { voiceSay("I couldn't read your ideas."); }
+}
+async function completeTaskByVoice(raw) {
+  const q = String(raw || '').replace(/\s+(as\s+)?(done|complete|completed|off|finished)\s*$/i, '').replace(/\s+/g, ' ').trim();
+  if (!q) return;
+  try {
+    const todos = await (await fetch('/api/todos')).json();
+    const open = (todos || []).filter((x) => !x.done);
+    const lc = q.toLowerCase();
+    const hit = open.find((x) => x.text.toLowerCase() === lc) || open.find((x) => x.text.toLowerCase().includes(lc)) || open.find((x) => lc.includes(x.text.toLowerCase()));
+    if (!hit) { voiceSay(`I couldn't find an open task matching “${q}”.`); return; }
+    await fetch('/api/todos/' + hit.id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ done: true }) });
+    loadTasks(); voiceSay(`Marked done: ${hit.text}`);
+  } catch { voiceSay("I couldn't update that task."); }
+}
+
+/* ---- dictation: stream speech into a field, with spoken punctuation ---- */
+const DICT_PUNCT = [
+  [/\bnew paragraph\b/g, '\n\n'], [/\b(new|next) line\b/g, '\n'],
+  [/\bquestion mark\b/g, '?'], [/\bexclamation (point|mark)\b/g, '!'],
+  [/\bfull stop\b/g, '.'], [/\bperiod\b/g, '.'], [/\bcomma\b/g, ','],
+  [/\bsemicolon\b/g, ';'], [/\bcolon\b/g, ':'],
+  [/\bopen paren(thesis)?\b/g, ' ('], [/\bclose paren(thesis)?\b/g, ')'],
+  [/\bem dash\b/g, ' — '], [/\bdash\b/g, ' — '], [/\bhyphen\b/g, '-'],
+  [/\bopen quote\b/g, ' “'], [/\bclose quote\b/g, '”'],
+  [/\bdot dot dot\b|\bellipsis\b/g, '…'], [/\bsmiley face\b/g, ' :)'], [/\bampersand\b/g, ' & '],
+];
+function formatDictation(raw) {
+  let s = ' ' + raw.toLowerCase() + ' ';
+  DICT_PUNCT.forEach(([re, rep]) => { s = s.replace(re, rep); });
+  s = s.replace(/\s+([.,;:!?…])/g, '$1').replace(/([(“])\s+/g, '$1').replace(/[ \t]{2,}/g, ' ').replace(/ *\n */g, '\n').trim();
+  s = s.replace(/(^|[.!?…]\s+|\n+)([a-z])/g, (m0, p, c) => p + c.toUpperCase());   // capitalize sentence starts
+  s = s.replace(/\bi\b/g, 'I').replace(/\bi'/g, "I'");                              // standalone "I"
+  return s;
+}
+function dictText() {
+  if (!dictRaw.length) return '';
+  const joined = dictRaw.join(' ');
+  return voicePrefs.autoPunct ? formatDictation(joined) : joined.replace(/\s+/g, ' ').trim();
+}
+function renderDictation(interim) {
+  if (!dictTarget) return;
+  const body = dictText();
+  const tail = interim ? (body ? ' ' : '') + interim.trim() : '';
+  dictTarget.value = dictBase + body + tail;
+  try { dictTarget.setSelectionRange(dictTarget.value.length, dictTarget.value.length); } catch {}
+  dictTarget.scrollTop = dictTarget.scrollHeight;
+}
+function startDictation(target, label) {
+  if (!voiceSupported()) { toast('Voice isn’t supported in this browser'); return; }
+  target = target || $('#journal-input'); if (!target) return;
+  if (dictating) endDictation(false);
+  dictating = true; dictTarget = target; dictRaw = [];
+  dictBase = target.value && !/\s$/.test(target.value) ? target.value + ' ' : (target.value || '');
+  target.classList.add('dictating'); try { target.focus(); } catch {}
+  ensureRecog(); recWantOn = true; armed = false; hud.show(); voiceCue(true);
+  hud.state('dictating'); hud.cap('Dictating into ' + (label || 'the note') + ' — say “stop” when done', 'hint');
+  if (!recRunning) { try { recog.start(); } catch {} }
+  toast('Dictation on — say “stop” to finish');
+}
+function endDictation(announce) {
+  if (!dictating) return null;
+  dictating = false;
+  const tgt = dictTarget;
+  if (tgt) { tgt.value = dictBase + dictText(); tgt.classList.remove('dictating'); try { tgt.focus(); } catch {} try { tgt.dispatchEvent(new Event('input', { bubbles: true })); } catch {} }
+  dictTarget = null; dictRaw = []; dictBase = '';
+  hud.state(recRunning ? 'listening' : 'idle');
+  if (announce !== false) hud.cap('Saved to the field — review and save.', 'reply');
+  if (!voicePrefs.handsFree) stopListening();
+  return tgt;
+}
+// Dictate into the focused field (or the journal); a second call ends it. Used by
+// the keymap, the palette, and the inline mic buttons.
+function toggleDictation(target, label) {
+  if (dictating && dictTarget === target) endDictation();
+  else startDictation(target, label);
+}
+function dictateDefault() {
+  if (dictating) { endDictation(); return; }
+  const a = document.activeElement;
+  const focused = a && /^(INPUT|TEXTAREA)$/.test(a.tagName) && a.type !== 'range' && a.id !== 'palette-input' && a.id !== 'cs-wake';
+  const tgt = focused ? a : $('#journal-input');
+  const label = tgt === $('#ask-input') ? 'Ask' : tgt === $('#today-input') ? 'a task' : tgt === $('#ideas-input') ? 'an idea' : 'your journal';
+  startDictation(tgt, label);
+}
+function onDictationResult(e) {
+  let interim = '', finalText = '';
+  for (let i = e.resultIndex; i < e.results.length; i++) {
+    const r = e.results[i]; if (r.isFinal) finalText += r[0].transcript; else interim += r[0].transcript;
+  }
+  if (finalText.trim()) {
+    const low = finalText.trim().toLowerCase();
+    if (/^(stop dictating|stop|done|that's all|that is all|end dictation|finish(ed)?)\b/.test(low)) { endDictation(); voiceSay('Done.'); return; }
+    if (/^(scratch that|delete that|undo that|cross that out)\b/.test(low)) { dictRaw.pop(); renderDictation(''); voiceCue(false); hud.cap(dictText() || '(empty)', 'heard'); return; }
+    if (/^(clear (it|all|that|everything)|start over|delete everything)\b/.test(low)) { dictRaw = []; dictBase = ''; renderDictation(''); return; }
+    dictRaw.push(finalText.trim());
+    renderDictation('');
+    hud.cap(dictText(), 'heard');
+  } else if (interim) {
+    renderDictation(interim);
+    hud.cap((dictText() + ' ' + interim.trim()).trim(), 'heard');
+  }
+}
+
+/* ================= console — voice settings + shortcut rebinding ================= */
+const VOICE_PHRASES = [
+  ['“What’s the most reliable way to debounce in JS?”', 'any question → answered by your claude CLI, read aloud'],
+  ['“Take a note” · “dictate to Ask” · “dictate a task”', 'dictation — speak and it types into the field'],
+  ['…then “new paragraph”, “comma”, “period”, “scratch that”, “stop”', 'while dictating'],
+  ['“Add a task: ship the release notes”', 'capture to Today'],
+  ['“Mark ship the release notes done”', 'complete a task by name'],
+  ['“What’s on my plate?” · “what’s next?”', 'read your open tasks aloud'],
+  ['“Remember: try the new embeddings model”', 'capture to Ideas'],
+  ['“Journal: shipped the voice feature today”', 'add a journal entry'],
+  ['“Brainstorm ideas about onboarding”', 'generate ideas'],
+  ['“Brief me”', 'your daily briefing'],
+  ['“Repeat that” · “say that again”', 'replay the last answer'],
+  ['“Faster” · “slower” · “louder” · “quieter”', 'tune the voice on the fly'],
+  ['“Start a 25 minute timer” · “stop the timer”', 'focus timer'],
+  ['“Open the gallery” · “open a terminal” · “open relay”', 'panels'],
+  ['“Make it night” · “set scene to dusk”', 'backdrop'],
+  ['“Play music” · “pause the music”', 'sound'],
+  ['“Launch <project name>”', 'launch a dock tool'],
+];
+const consoleOpen = () => !$('#console').classList.contains('hidden');
+function openConsole(tab) {
+  $('#console').classList.remove('hidden');
+  switchConsoleTab(tab || 'voice');
+  fillVoiceSettings(); renderShortcuts();
+}
+function closeConsole() { cancelRebind(); $('#console').classList.add('hidden'); }
+function switchConsoleTab(tab) {
+  $$('.cs-tab').forEach((b) => b.classList.toggle('active', b.dataset.tab === tab));
+  $$('.cs-pane').forEach((p) => p.classList.toggle('active', p.dataset.pane === tab));
+}
+function populateVoiceSelect() {
+  const sel = $('#cs-voice'); if (!sel) return;
+  const vs = voiceList().filter((v) => /^en[-_]/i.test(v.lang)).concat(voiceList().filter((v) => !/^en[-_]/i.test(v.lang)));
+  if (!vs.length) { sel.innerHTML = '<option value="">System default</option>'; return; }
+  sel.innerHTML = '<option value="">System default</option>' + vs.map((v) => `<option value="${esc(v.voiceURI)}">${esc(v.name)} — ${esc(v.lang)}</option>`).join('');
+  sel.value = voicePrefs.voiceURI || '';
+}
+function fillVoiceSettings() {
+  $('#cs-voice-unsupported').classList.toggle('hidden', voiceSupported());
+  $('#cs-handsfree').checked = voicePrefs.handsFree;
+  $('#cs-handsfree').disabled = !voiceSupported();
+  $('#cs-wake').value = voicePrefs.wake || '';
+  $('#cs-speak').checked = voicePrefs.speak;
+  $('#cs-rate').value = voicePrefs.rate; $('#cs-pitch').value = voicePrefs.pitch;
+  $('#cs-beep').checked = voicePrefs.beep;
+  $('#cs-autopunct').checked = voicePrefs.autoPunct;
+  $('#cs-followup').checked = voicePrefs.followup;
+  populateVoiceSelect();
+  $('#cs-phrase-list').innerHTML = VOICE_PHRASES.map(([p, h]) => `<div class="cs-phrase"><span class="cs-phrase-say">${esc(p)}</span><span class="cs-phrase-do">${esc(h)}</span></div>`).join('');
+}
+function renderShortcuts() {
+  const groups = [...new Set(KEY_DEFS.map((d) => d.group))];
+  $('#cs-keys').innerHTML = groups.map((grp) => `
+    <div class="cs-keygroup"><div class="cs-keygroup-h">${esc(grp)}</div>` +
+    KEY_DEFS.filter((d) => d.group === grp).map((d) => {
+      const c = bindingFor(d.id);
+      return `<div class="cs-keyrow" data-id="${d.id}">
+        <span class="cs-key-label">${esc(d.label)}</span>
+        <button class="cs-chord${c ? '' : ' unbound'}" data-id="${d.id}" title="Click to rebind">${esc(prettyChord(c))}</button>
+      </div>`;
+    }).join('') + `</div>`).join('');
+}
+let rebindId = null, rebindHandler = null;
+function cancelRebind() {
+  if (rebindHandler) { document.removeEventListener('keydown', rebindHandler, true); rebindHandler = null; }
+  if (rebindId) { const b = $(`.cs-chord[data-id="${rebindId}"]`); if (b) b.classList.remove('listening'); rebindId = null; }
+  capturingKey = false; const h = $('#cs-rebind-hint'); if (h) h.textContent = '';
+}
+function startRebind(id) {
+  cancelRebind();
+  rebindId = id; capturingKey = true;
+  const b = $(`.cs-chord[data-id="${id}"]`); if (b) { b.classList.add('listening'); b.textContent = 'press keys…'; }
+  $('#cs-rebind-hint').textContent = 'Press a key combo · Backspace to clear · Esc to cancel';
+  rebindHandler = (e) => {
+    e.preventDefault(); e.stopPropagation();
+    const k = e.key;
+    if (k === 'Escape') { cancelRebind(); renderShortcuts(); return; }
+    if (k === 'Shift' || k === 'Control' || k === 'Alt' || k === 'Meta') return;   // wait for the real key
+    if (k === 'Backspace' || k === 'Delete') { keyOverrides[id] = ''; saveKeymap(); invalidateBindings(); cancelRebind(); renderShortcuts(); return; }
+    const chord = chordFromEvent(e);
+    const clash = bindingIndex()[chord];
+    if (clash && clash.id !== id) { keyOverrides[clash.id] = ''; toast(`Reassigned ${prettyChord(chord)} from “${clash.label}”`); }
+    keyOverrides[id] = chord; saveKeymap(); invalidateBindings(); cancelRebind(); renderShortcuts();
+  };
+  document.addEventListener('keydown', rebindHandler, true);
+}
+function consoleInit() {
+  $('#console-close').addEventListener('click', closeConsole);
+  $('.cs-shade').addEventListener('click', closeConsole);
+  $$('.cs-tab').forEach((b) => b.addEventListener('click', () => switchConsoleTab(b.dataset.tab)));
+  // voice settings
+  $('#cs-handsfree').addEventListener('change', () => { if ($('#cs-handsfree').checked !== voicePrefs.handsFree) toggleHandsFree(); });
+  $('#cs-wake').addEventListener('change', () => { voicePrefs.wake = ($('#cs-wake').value || 'oasis').toLowerCase().trim().slice(0, 24); saveVoicePrefs(); });
+  $('#cs-speak').addEventListener('change', () => { voicePrefs.speak = $('#cs-speak').checked; saveVoicePrefs(); if (!voicePrefs.speak) stopSpeaking(); });
+  $('#cs-voice').addEventListener('change', () => { voicePrefs.voiceURI = $('#cs-voice').value; saveVoicePrefs(); });
+  $('#cs-voice-test').addEventListener('click', () => { const was = voicePrefs.speak; voicePrefs.speak = true; voiceSay(greetLine()); voicePrefs.speak = was; });
+  $('#cs-rate').addEventListener('input', () => { voicePrefs.rate = +$('#cs-rate').value; saveVoicePrefs(); });
+  $('#cs-pitch').addEventListener('input', () => { voicePrefs.pitch = +$('#cs-pitch').value; saveVoicePrefs(); });
+  $('#cs-beep').addEventListener('change', () => { voicePrefs.beep = $('#cs-beep').checked; saveVoicePrefs(); });
+  $('#cs-autopunct').addEventListener('change', () => { voicePrefs.autoPunct = $('#cs-autopunct').checked; saveVoicePrefs(); });
+  $('#cs-followup').addEventListener('change', () => { voicePrefs.followup = $('#cs-followup').checked; saveVoicePrefs(); });
+  // shortcuts
+  $('#cs-keys').addEventListener('click', (e) => { const b = e.target.closest('.cs-chord'); if (b) startRebind(b.dataset.id); });
+  $('#cs-keys-reset').addEventListener('click', () => { keyOverrides = {}; saveKeymap(); invalidateBindings(); renderShortcuts(); toast('Shortcuts reset to defaults'); });
+  if (SYNTH) { try { SYNTH.onvoiceschanged = () => { if (consoleOpen()) populateVoiceSelect(); }; } catch {} }
+}
+
+function cycleScene() {
+  const order = ['auto', 'dawn', 'day', 'dusk', 'night'];
+  const cur = $$('#scene button').findIndex((b) => b.classList.contains('active'));
+  setPhaseControl(order[(Math.max(0, cur) + 1) % order.length]);
+}
+
+function voiceInit() {
+  loadVoicePrefs();
+  syncVoiceUi();
+  const chip = $('#btn-voice');
+  if (chip) chip.addEventListener('click', toggleHandsFree);
+  if (!voiceSupported() && chip) { chip.title = 'Voice isn’t supported in this browser'; }
+  // orb: tap = one capture; press-and-hold = walkie-talkie (release to send)
+  const orb = $('#jarvis-orb');
+  if (orb) {
+    let downAt = 0;
+    orb.addEventListener('pointerdown', (e) => { e.preventDefault(); downAt = Date.now(); if (selfSpeaking) { stopSpeaking(); return; } voicePushToTalk(); });
+    orb.addEventListener('pointerup', () => { if (Date.now() - downAt > 380 && recRunning) { try { recog.stop(); } catch {} } });
+  }
+  // Resume persisted hands-free listening on the first user gesture (browsers
+  // need a gesture before opening the mic; we never start it unprompted).
+  if (voiceSupported() && voicePrefs.handsFree) {
+    const resume = () => { if (voicePrefs.handsFree && !recRunning) startListening(); };
+    document.addEventListener('pointerdown', resume, { once: true });
+    document.addEventListener('keydown', resume, { once: true });
+  }
+}
+
+function keymapInit() { loadKeymap(); }
+
+// Rest the mic when the tab is hidden (privacy + the T570 perf budget); resume
+// hands-free listening when it comes back.
+function voiceSleep() { stopSpeaking(); if (recRunning) { try { recog.stop(); } catch {} } }
+function voiceWake() { if (voicePrefs.handsFree && recWantOn && !recRunning) { try { ensureRecog(); recog.start(); } catch {} } }
+
 /* ================= config + boot ================= */
 async function loadConfig() {
   try { cfg = { ...cfg, ...(await (await fetch('/api/config')).json()) }; } catch {}
@@ -1594,9 +2232,9 @@ function startTimers() {
 function stopTimers() { timers.forEach(clearInterval); timers = []; }
 function visibilityInit() {
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden) { seaPause(); stopTimers(); stopRelayPoll(); }            // also rest the relay poll while hidden (perf budget)
+    if (document.hidden) { seaPause(); stopTimers(); stopRelayPoll(); voiceSleep(); }   // also rest the relay poll + mic while hidden (perf budget)
     else {
-      seaResume(); tickClock(); applyPhase(); startTimers();
+      seaResume(); tickClock(); applyPhase(); startTimers(); voiceWake();
       if (relayRunning && relayActiveId && !relayPollTimer) { pollRelay(); relayPollTimer = setInterval(pollRelay, 1500); }  // resume + catch up
     }
   });
@@ -1606,7 +2244,7 @@ function visibilityInit() {
 tickClock(); applyPhase();
 $('#sea-poster').addEventListener('error', () => document.body.classList.add('no-photo'));  // both video + poster gone → gradient
 document.addEventListener('pointerdown', seaResume, { once: true });                          // resume if autoplay was blocked
-sceneInit(); panelTabsInit(); askInit(); askHistoryInit(); ideasInit(); tasksInit(); journalInit(); galleryInit(); lightboxInit(); tickerInit(); dockInit(); playerInit(); paletteInit(); timerInit(); briefingInit(); agentLogInit(); terminalInit(); relayInit(); setupInit(); updateInit(); visibilityInit(); keyboardInit();
+sceneInit(); panelTabsInit(); askInit(); askHistoryInit(); ideasInit(); tasksInit(); journalInit(); galleryInit(); lightboxInit(); tickerInit(); dockInit(); playerInit(); paletteInit(); timerInit(); briefingInit(); agentLogInit(); terminalInit(); relayInit(); setupInit(); updateInit(); keymapInit(); voiceInit(); consoleInit(); visibilityInit(); keyboardInit();
 loadTasks(); loadIdeas(); loadJournal(); loadTicker(); loadDock();
 loadConfig().then(spotifyHandleRedirect);
 startTimers();

@@ -2,8 +2,74 @@
 
 All notable changes to Oasis are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The current release is
-**1.1.4**; the authoritative version number lives in the `VERSION` constant in
+**1.2.0**; the authoritative version number lives in the `VERSION` constant in
 `server.js` (and `package.ps1` stamps it into `docs/version.json` at build time).
+
+## [1.2.0] — 2026-06-14
+
+### Added
+- **Voice control — talk to Oasis.** A new, opt-in voice assistant built on the
+  browser's own Web Speech API (no new dependency). Two ways in: **hands-free**
+  (it listens for a wake word you set — say "Oasis, brief me", or set the word to
+  "Jarvis" for the full effect) and **push-to-talk** (tap or hold the floating
+  arc-reactor **orb**, press the shortcut, or use the command palette — one
+  capture). Recognised speech runs a small **command grammar** —
+  *"add a task… / remember… / journal… / brainstorm about… / brief me / start a
+  25 minute timer / stop the timer / open the gallery / make it night / play
+  music / launch <project>"* — and **anything it doesn't recognise becomes an Ask**,
+  answered by your local `claude` CLI and **read back aloud**. A live caption and
+  the orb's states (listening / armed / thinking / speaking) show what's going on.
+  Configure the wake word, the speaking voice, rate, pitch, and the cue chime in
+  the new **Console → Voice** tab. Voice is **off until you turn it on**, the mic
+  only opens while you're listening, and it rests automatically when the tab is
+  hidden.
+- **Customizable keyboard shortcuts.** Every shortcut now lives in one registry
+  and is **rebindable** — open **Console → Shortcuts** (`?`), click any binding,
+  and press the new keys (Backspace clears, Esc cancels; conflicts are reassigned
+  for you). Single-key "leader" shortcuts (`/`, `B`, `G`, `T`, `I`, `J`, `F`, `R`,
+  `` ` ``, `M`, `S`, `?`) fire only when you're not typing; combos with Ctrl/⌘ or
+  Alt work anywhere. Overrides persist locally; "Reset all" restores the defaults.
+  The existing `Ctrl K` / `Ctrl '` / `/` bindings are unchanged.
+- **Console overlay.** One glass panel with **Voice** and **Shortcuts** tabs,
+  reachable from the command palette, the keyboard (`?` / `Ctrl ;`), and voice
+  ("show shortcuts" / "voice settings").
+- **Voice dictation — speak and it types.** Say *"take a note"* / *"dictate to
+  Ask"* / *"dictate a task"*, press **`D`**, or click the new **mic button** on the
+  Ask bar or the Journal composer, and your speech streams straight into the field
+  with live interim text. **Spoken punctuation** ("period", "comma", "question
+  mark", "new line", "new paragraph", "open/close paren", "dash", "open/close
+  quote"…) becomes real marks, sentences auto-capitalize, and standalone "i" → "I".
+  Say *"scratch that"* to drop the last phrase, *"clear"* to start over, *"stop"*
+  to finish — the text stays in the field for you to edit and save. Smart
+  punctuation is toggleable (Console → Voice).
+- **A much smarter assistant.** New voice commands: **read-back** (*"what's on my
+  plate?"*, *"what's next?"*, *"read my ideas"*, *"repeat that"* — spoken from your
+  live data), **complete a task by name** (*"mark ship the notes done"*),
+  **live voice tuning** (*"faster"*, *"slower"*, *"louder"*, *"quieter"* — persisted),
+  and a **conversational follow-up window** (after an answer it stays armed a few
+  seconds so a follow-up needs no wake word; hands-free only, toggleable). The orb
+  gained a **dictating** state and the wake word now interrupts cleanly (barge-in).
+
+### Changed
+- The global keyboard handler is now a small **keymap dispatcher** driven by the
+  registry above (same behaviour for the old shortcuts, plus the new ones). `Esc`
+  also closes the Console.
+- The command palette gained voice and shortcut entries (push-to-talk, hands-free,
+  voice settings, keyboard shortcuts).
+
+### Fixed
+- **macOS downloads no longer hit a dead-end Gatekeeper block.** A zip downloaded
+  in a browser is quarantined by macOS, and on Sequoia+ Gatekeeper refuses to run
+  the unsigned launchers with **no "Open Anyway"** option — so first-run users were
+  stuck. New **one-line Terminal installer** (`docs/install.sh`, surfaced on the
+  site as `curl -fsSL …/install.sh | bash`) downloads and installs Oasis to
+  `~/Applications/Oasis` *without* the quarantine flag (files fetched by `curl`
+  aren't quarantined), so there's nothing to approve — no Apple Developer account
+  or notarization required. It preserves existing `data/`/`assets/` on reinstall,
+  drops a Desktop launcher, and opens the app. The marketing page leads macOS
+  visitors with the copy-paste command (and a copy button); the zip stays as a
+  fallback with an `xattr -dr com.apple.quarantine` + `chmod +x` recovery one-liner
+  in `START HERE (macOS).txt` and the page. README / AGENTS / PUBLISH updated.
 
 ## [1.1.4] — 2026-06-14
 

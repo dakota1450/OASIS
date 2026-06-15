@@ -1,24 +1,36 @@
 Oasis for macOS - start here
 ==================================
 
-1. Double-click  "Setup Oasis.command"
-   It checks for Node.js, makes a Desktop launcher, and opens Oasis.
+EASIEST (recommended) - install from Terminal, no Gatekeeper prompts:
 
-If macOS blocks it ("cannot be opened because it is from an
-unidentified developer", or nothing happens):
+   1. Open Terminal (Applications > Utilities > Terminal, or Spotlight "Terminal").
+   2. Paste this line and press Return:
 
-   * Right-click "Setup Oasis.command" -> Open -> Open.   (do this once)
-        - or -
-   * Open Terminal, drag this folder onto it to cd in, then run:
-        bash "Setup Oasis.command"
-        (this also works without changing any permissions)
+        curl -fsSL https://dakota1450.github.io/OASIS/install.sh | bash
 
-   After the first run, double-clicking works normally.
+   It downloads Oasis, makes a Desktop launcher, and opens it. Because the files
+   come from Terminal (not a browser download), macOS does NOT quarantine them,
+   so there is no "unidentified developer" block to fight.
+
+
+IF YOU DOWNLOADED THIS ZIP INSTEAD
+
+A zip downloaded in a browser is quarantined by macOS, and recent macOS
+(Sequoia+) blocks the launchers with NO "Open Anyway" button. Clear the
+quarantine and make the launchers runnable - in Terminal, run once:
+
+        xattr -dr com.apple.quarantine "$(pwd)" ; chmod +x *.command
+
+   (drag this folder onto the Terminal window first so it's the current folder),
+   then double-click  "Setup Oasis.command".
+
+   Or just run the one-line installer above - it replaces all of this.
+
 
 Requirements
 ------------
    * macOS (Apple silicon or Intel)
-   * Node.js - free, from https://nodejs.org/en/download  (the setup checks for it)
+   * Node.js - free, from https://nodejs.org/en/download  (the installer checks)
    * Claude Code + Codex recommended, not required
 
 Everything Oasis stores stays on this machine. No account, no telemetry.

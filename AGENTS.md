@@ -19,7 +19,9 @@ glass over a looping ocean video. Features: an **Ask** bar (shells out to the
 local `claude` CLI), **Ideas** capture + "develop into angles", a **Today** task
 list, a **Journal**, an image **Gallery**, a once-a-day **briefing**, a quiet
 **ticker** of recent Claude Code / Codex sessions, and a **tool dock** that
-launches the user's projects.
+launches the user's projects. **Voice control** (opt-in, the browser's own Web
+Speech API) and **fully customizable keyboard shortcuts** sit on top — both are
+pure frontend, in `app.js`.
 
 It is **free, cross-platform (macOS + Windows), with no account, no telemetry,
 nothing phoned home.** Treat those four properties as inviolable product
@@ -94,12 +96,20 @@ target hardware. Breaking one is a regression even if the app still "works."
   (b) the local `claude` / `codex` CLIs, (c) the **music panel** — internet
   radio streams, and the optional Spotify and YouTube integrations (Spotify
   embeds + PKCE OAuth to the user's own Spotify; `youtube-nocookie.com` embeds
-  for pasted/saved links), and (d) the **manual update check** — a single `GET`
+  for pasted/saved links), (d) the **manual update check** — a single `GET`
   of the published release manifest, only when the user clicks "Check for
-  updates" (never automatic, sends nothing about the user). Those are the only
-  cross-origin `fetch`/embed targets; everything else in the frontend is
-  same-origin only. Don't add new outbound calls beyond this set without
-  surfacing it (see §10) — in particular, do NOT make the update check automatic.
+  updates" (never automatic, sends nothing about the user), and (e) **voice
+  control** — the browser's built-in Web Speech API, used only while the user is
+  actively listening (opt-in, off by default). Oasis itself sends nothing and
+  keeps no audio, but note that in some browsers (Chrome/Edge) `SpeechRecognition`
+  transcribes the captured audio via the browser maker's own cloud service — the
+  same "user-initiated media" category as streaming music. `speechSynthesis`
+  (the spoken replies) is the local OS voice. There is no Web-Speech polyfill and
+  no second dependency — if the API is absent (e.g. Firefox) voice simply
+  degrades off. Those are the only cross-origin `fetch`/embed/egress targets;
+  everything else in the frontend is same-origin only. Don't add new outbound
+  calls beyond this set without surfacing it (see §10) — in particular, do NOT
+  make the update check automatic, and do NOT make voice listen on its own.
 - **No telemetry, ever.** Nothing about the user leaves the machine.
 - **Performance target = ThinkPad T570 with integrated graphics.** No
   `filter: blur()` on large or animated elements. `backdrop-filter` on the
@@ -291,8 +301,23 @@ If a change would relax any of these, stop and flag it rather than shipping it.
   `Compress-Archive`.
 - macOS launchers (`*.command`, `*.sh`) **must stay LF** — enforced by
   `.gitattributes`. Zips can't carry the Unix exec bit, so first-run users chmod
-  via the setup script; the `START HERE (macOS).txt` note explains the Gatekeeper
-  right-click→Open step. Keep that note accurate.
+  via the setup script.
+- **The macOS primary install path is the Terminal one-liner**
+  `curl -fsSL https://dakota1450.github.io/OASIS/install.sh | bash`, served from
+  `docs/install.sh` (committed; GitHub Pages serves it as-is — `.nojekyll`). This
+  is the deliberate fix for Gatekeeper: a **browser-downloaded** zip gets the
+  `com.apple.quarantine` xattr, and on macOS Sequoia+ Gatekeeper blocks unsigned
+  apps with **no "Open Anyway"** button (the old right-click→Open bypass is gone),
+  so the bundled `.command` launchers can't bootstrap. Files fetched by
+  `curl`/created by a script are **not** quarantined, so the installer sidesteps
+  Gatekeeper entirely — no Apple Developer account, no notarization, no Mac needed
+  to build. `install.sh` curls the macOS zip, unpacks it to `~/Applications/Oasis`
+  (preserving any existing `data/`/`assets/`), clears quarantine + `chmod +x`es the
+  launchers, drops a Desktop launcher, and opens the app. Keep `install.sh` LF and
+  `set -euo pipefail`-clean; the zip download remains as a fallback (the
+  `START HERE (macOS).txt` + site `<details>` give the `xattr -dr` + `chmod`
+  recovery one-liner). If you ever change the install location or zip layout, fix
+  it in `install.sh` too.
 - Publishing the site = commit `docs/` and push to `main`; GitHub Pages serves
   `/docs`. Full steps in [`PUBLISH.md`](PUBLISH.md).
 - `data/`, `assets/*` (except `assets/README.txt`), `dist/`, and `node_modules/`

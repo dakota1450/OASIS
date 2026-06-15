@@ -42,6 +42,10 @@
   <symbol id="i-terminal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 10l3 2.5-3 2.5M12.5 15.5H17"/></symbol>
   <symbol id="i-relay" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h13l-3.4-3.4M20 15H7l3.4 3.4"/></symbol>
   <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 0 0-14.3-4.6M4 13a8 8 0 0 0 14.3 4.6"/><path d="M4 4v3.5h3.5M20 20v-3.5h-3.5"/></symbol>
+  <symbol id="i-mic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3M8.5 21h7"/></symbol>
+  <symbol id="i-mic-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 9V6a3 3 0 0 1 5.9-.7M15 11.4V6M5.5 11.5a6.5 6.5 0 0 0 9.8 5.6M18.5 11.5a6.5 6.5 0 0 1-.6 2.7M12 18v3M8.5 21h7M4 4l16 16"/></symbol>
+  <symbol id="i-keyboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 9.5h.01M9.5 9.5h.01M13 9.5h.01M16.5 9.5h.01M6 13h.01M16.5 13h.01M9 15.5h6"/></symbol>
+  <symbol id="i-wave" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 12h.01M7 8v8M11 5v14M15 8v8M19 11v2M21 12h.01"/></symbol>
 </defs></svg>
 
 <!-- ======= the sea — looping cinemagraph video (photo poster = instant paint + fallback) ======= -->
@@ -64,6 +68,7 @@
       <button id="btn-terminal" class="chip" title="Open a terminal"><svg class="ic"><use href="#i-terminal"></use></svg></button>
       <button id="btn-relay" class="chip" title="Relay — Claude × Codex"><svg class="ic"><use href="#i-relay"></use></svg></button>
       <button id="btn-gallery" class="chip" title="Gallery"><svg class="ic"><use href="#i-grid"></use></svg></button>
+      <button id="btn-voice" class="chip" title="Voice — hands-free listening (Shift V)"><svg class="ic"><use href="#i-mic"></use></svg></button>
       <button id="open-settings" class="chip" title="Preferences"><svg class="ic"><use href="#i-settings"></use></svg></button>
     </div>
   </header>
@@ -73,6 +78,7 @@
     <form id="ask-form" autocomplete="off">
       <span class="ask-ico"><svg class="ic"><use href="#i-search"></use></svg></span>
       <input id="ask-input" type="text" placeholder="Ask anything, or capture a thought…" spellcheck="false" title="Ask anything — press / to jump here, Enter to ask">
+      <button type="button" id="ask-dictate" class="ask-mic" title="Dictate — speak and it types"><svg class="ic"><use href="#i-mic"></use></svg></button>
       <button type="button" id="ask-ideas" title="Brainstorm ideas">Ideas</button>
       <button type="submit" id="ask-go" title="Ask"><svg class="ic"><use href="#i-send"></use></svg></button>
     </form>
@@ -102,6 +108,7 @@
       <textarea id="journal-input" rows="2" placeholder="What's on your mind?" spellcheck="true"></textarea>
       <div class="journal-foot">
         <div class="mood" id="journal-mood"></div>
+        <button id="journal-dictate" class="jmic" type="button" title="Dictate this entry"><svg class="ic"><use href="#i-mic"></use></svg></button>
         <button id="journal-save" title="Save entry"><svg class="ic"><use href="#i-feather"></use></svg>Save</button>
       </div>
     </div>
@@ -297,6 +304,97 @@
 </div>
 
 <div id="toast"></div>
+
+<!-- ======= Jarvis voice HUD — the arc-reactor orb + live caption ======= -->
+<div id="jarvis" class="off" data-state="idle">
+  <div id="jarvis-cap" class="jv-cap" aria-live="polite"></div>
+  <button id="jarvis-orb" type="button" title="Talk to Oasis — click or hold to speak" aria-label="Talk to Oasis">
+    <span class="jv-glow"></span>
+    <span class="jv-ring r2"></span><span class="jv-ring r1"></span>
+    <span class="jv-core"><svg class="ic"><use href="#i-mic"></use></svg></span>
+    <span class="jv-bars"><i></i><i></i><i></i><i></i><i></i></span>
+  </button>
+</div>
+
+<!-- ======= Console — voice settings + customizable keyboard shortcuts ======= -->
+<div id="console" class="hidden" role="dialog" aria-modal="true" aria-label="Voice and shortcuts">
+  <div class="cs-shade"></div>
+  <div class="cs-box">
+    <div class="cs-head">
+      <div class="cs-title"><span class="cs-mark"><svg class="ic"><use href="#i-mic"></use></svg></span><h2>Console</h2></div>
+      <div class="cs-tabs" role="tablist">
+        <button class="cs-tab active" data-tab="voice" role="tab">Voice</button>
+        <button class="cs-tab" data-tab="shortcuts" role="tab">Shortcuts</button>
+      </div>
+      <button id="console-close" class="cs-iconbtn" title="Close (Esc)" aria-label="Close"><svg class="ic"><use href="#i-x"></use></svg></button>
+    </div>
+
+    <div class="cs-pane active" data-pane="voice">
+      <div id="cs-voice-unsupported" class="cs-note hidden">This browser doesn't support voice recognition. Voice works best in Chrome, Edge, or Safari. The rest of Oasis is unaffected.</div>
+
+      <div class="cs-row">
+        <div class="cs-row-main"><div class="cs-row-name">Hands-free listening</div><div class="cs-row-sub">Always listening for your wake word, Iron-Man style. Click the mic orb anytime for one-shot push-to-talk.</div></div>
+        <label class="cs-switch"><input type="checkbox" id="cs-handsfree"><span class="cs-slider"></span></label>
+      </div>
+
+      <div class="cs-row">
+        <div class="cs-row-main"><div class="cs-row-name">Wake word</div><div class="cs-row-sub">Say this to get the assistant's attention (e.g. "Oasis, brief me"). Two short syllables work best.</div></div>
+        <input type="text" id="cs-wake" class="cs-input" maxlength="24" placeholder="oasis" autocomplete="off" spellcheck="false">
+      </div>
+
+      <div class="cs-row">
+        <div class="cs-row-main"><div class="cs-row-name">Speak responses</div><div class="cs-row-sub">Read answers and confirmations aloud in the assistant's voice.</div></div>
+        <label class="cs-switch"><input type="checkbox" id="cs-speak" checked><span class="cs-slider"></span></label>
+      </div>
+
+      <div class="cs-row">
+        <div class="cs-row-main"><div class="cs-row-name">Voice</div><div class="cs-row-sub">Which system voice the assistant speaks in.</div></div>
+        <div class="cs-voice-pick"><select id="cs-voice" class="cs-input"></select><button id="cs-voice-test" class="cs-btn" type="button">Test</button></div>
+      </div>
+
+      <div class="cs-row">
+        <div class="cs-row-main"><div class="cs-row-name">Speaking rate</div><div class="cs-row-sub">How fast the assistant talks.</div></div>
+        <input type="range" id="cs-rate" class="cs-range" min="0.6" max="1.6" step="0.05" value="1">
+      </div>
+
+      <div class="cs-row">
+        <div class="cs-row-main"><div class="cs-row-name">Pitch</div><div class="cs-row-sub">Lower for a calmer tone.</div></div>
+        <input type="range" id="cs-pitch" class="cs-range" min="0.6" max="1.4" step="0.05" value="1">
+      </div>
+
+      <div class="cs-row">
+        <div class="cs-row-main"><div class="cs-row-name">Cue sound</div><div class="cs-row-sub">A soft chime when the assistant starts listening.</div></div>
+        <label class="cs-switch"><input type="checkbox" id="cs-beep" checked><span class="cs-slider"></span></label>
+      </div>
+
+      <div class="cs-row">
+        <div class="cs-row-main"><div class="cs-row-name">Smart punctuation in dictation</div><div class="cs-row-sub">Turn spoken “period / comma / new line” into real marks and capitalize sentences.</div></div>
+        <label class="cs-switch"><input type="checkbox" id="cs-autopunct" checked><span class="cs-slider"></span></label>
+      </div>
+
+      <div class="cs-row">
+        <div class="cs-row-main"><div class="cs-row-name">Follow-up window</div><div class="cs-row-sub">After answering, listen a few seconds for a follow-up — no wake word needed (hands-free only).</div></div>
+        <label class="cs-switch"><input type="checkbox" id="cs-followup" checked><span class="cs-slider"></span></label>
+      </div>
+
+      <details class="cs-phrases">
+        <summary>What can I say?</summary>
+        <div id="cs-phrase-list"></div>
+      </details>
+
+      <p class="cs-fineprint">Voice is off until you turn it on, and the mic only opens while you're listening. Speech is transcribed by your browser's built-in recognition — in some browsers (Chrome, Edge) that means the audio is sent to the browser maker's speech service. Oasis itself sends nothing and keeps no recordings; talking aloud is optional.</p>
+    </div>
+
+    <div class="cs-pane" data-pane="shortcuts">
+      <p class="cs-sub">Click any shortcut to rebind it. Single keys (no Ctrl/Alt) only fire when you're not typing in a field.</p>
+      <div id="cs-keys"></div>
+      <div class="cs-keys-foot">
+        <span id="cs-rebind-hint" class="cs-rebind-hint"></span>
+        <button id="cs-keys-reset" class="cs-btn ghost" type="button">Reset all to defaults</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <nav id="scene" title="Time of day" aria-label="Backdrop time of day">
   <button data-phase="auto" class="active" aria-label="Backdrop: follow the clock">Auto</button>

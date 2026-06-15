@@ -104,8 +104,10 @@ $serverText = Get-Content -Raw (Join-Path $root 'server.js')
 $verMatch = [regex]::Match($serverText, "const VERSION = '([^']+)'")
 if (-not $verMatch.Success) { throw "Could not find VERSION in server.js" }
 $version = $verMatch.Groups[1].Value
+# Read as UTF-8 explicitly: PowerShell 5.1's default Get-Content uses the system
+# ANSI codepage, which mangles any non-ASCII in the notes (— … ') on this round-trip.
 $manifestPath = Join-Path $root 'docs\version.json'
-$manifest = Get-Content -Raw $manifestPath | ConvertFrom-Json
+$manifest = Get-Content -Raw -Encoding UTF8 $manifestPath | ConvertFrom-Json
 $manifest.version = $version
 WriteJson $manifestPath ($manifest | ConvertTo-Json -Depth 5)
 Write-Host ("  Stamped docs\version.json  version = {0}  (from server.js)" -f $version) -ForegroundColor Green
