@@ -97,9 +97,26 @@ shell, and the working directory is resolved from the server's own session index
 never from a client-supplied path. The token does **not** turn this into a remote
 auth story: it's an anti-CSRF measure, not a substitute for staying loopback-only.
 
+### Self-update & restart — Origin-gated writes
+`POST /api/update/apply` (a git `pull --ff-only`, or download → unpack → overwrite
+in place) and `POST /api/update/restart` (relaunch via the platform "Restart Oasis"
+launcher) are the only routes that rewrite program files or restart the process.
+CORS does not stop a cross-origin page from *firing* a state-changing `fetch` (it
+only blocks reading the response), so both reject any request whose `Origin` is
+present and isn't Oasis's own page (→ `403`); a request with no `Origin` (curl,
+another local tool) is the trusted local user. The self-update downloads only the
+URL from the **hardcoded** release manifest (cache-busted), unpacks with the OS
+tool, and overwrites in place while preserving `data/`, `assets/`, `node_modules/`,
+and `.git/` — backing the program files up first and rolling back if the copy fails.
+
 ### Untrusted content — input is bounded
 - **Image import** (`importAsset`): `https` only, ≤3 redirects, 30 MB cap, 60s
-  timeout, written into `assets/` only with a server-chosen filename.
+  timeout, written into `assets/` only with a server-chosen filename. The host is
+  also **SSRF-filtered** — it is resolved (and re-checked on every redirect) and any
+  loopback / private / link-local (incl. the `169.254.169.254` cloud-metadata
+  address) / CGNAT / unspecified address is refused, so a pasted or redirected URL
+  can't reach an internal service. (Best-effort against the resolved IP; full
+  DNS-rebind pinning is out of scope for a loopback-only tool.)
 - **Request bodies** are capped at 2 MB (`readBody`); oversized bodies destroy the
   connection.
 - **Model output is never trusted** as code or markup — it's parsed defensively
@@ -116,8 +133,11 @@ auth story: it's an anti-CSRF measure, not a substitute for staying loopback-onl
 - **No authentication** on the loopback server. Any process able to reach
   `127.0.0.1:7777` on the machine can use the API. This is acceptable for a
   single-user local tool and is the reason it must stay loopback-only.
-- **No CSRF protection.** Same rationale — it's not exposed to the web. Don't
-  embed Oasis in a remotely-hosted page.
+- **Limited CSRF surface.** There are no accounts and no cookies, so most endpoints
+  rely on staying loopback-only; the high-privilege write routes that rewrite files
+  or restart (`/api/update/apply`, `/api/update/restart`) additionally reject foreign
+  `Origin`s. Still — it's not built to be exposed to the web; don't embed Oasis in a
+  remotely-hosted page.
 - The app launches the user's scripts/projects and reads their session logs by
   design; it is not a security sandbox.
 

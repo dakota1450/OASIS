@@ -27,6 +27,33 @@ async function copyText(text) {
 let toastTimer;
 function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 2400); }
 
+// Replace a text element with an inline editor. Enter (Ctrl/Cmd+Enter for the
+// multiline journal) or blur commits via commit(value); Escape cancels. reload()
+// re-renders the list from the server afterward — which also restores the
+// original text on cancel. Used by Ideas, Today, and Journal (server PATCHes text).
+function inlineEdit(el, current, commit, reload) {
+  if (!el || el.dataset.editing) return;
+  el.dataset.editing = '1';
+  const multi = el.classList.contains('jtext');
+  const field = document.createElement(multi ? 'textarea' : 'input');
+  if (!multi) field.type = 'text';
+  field.className = 'inline-edit'; field.value = current;
+  el.replaceWith(field);
+  field.focus(); try { field.setSelectionRange(field.value.length, field.value.length); } catch {}
+  let done = false;
+  const finish = async (save) => {
+    if (done) return; done = true;
+    const val = field.value.trim();
+    if (save && val && val !== current) { try { await commit(val); } catch {} }
+    reload();                                       // re-render (restores the original on cancel)
+  };
+  field.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+    else if (e.key === 'Enter' && (!multi || e.ctrlKey || e.metaKey)) { e.preventDefault(); finish(true); }
+  });
+  field.addEventListener('blur', () => finish(true));
+}
+
 /* ---- tiny, safe markdown renderer (for Ask answers) ---- */
 function mdInline(s) {
   return s
@@ -217,6 +244,7 @@ function renderIdeas(notes) {
       </div>
       <span class="ops">
         <button class="develop" title="Develop into angles">${icon('arrow')}</button>
+        <button class="edit" title="Edit">${icon('edit')}</button>
         <button class="pin" title="Pin">${icon(n.pinned ? 'star-fill' : 'star')}</button>
         <button class="del" title="Remove">${icon('x')}</button>
       </span>
@@ -259,6 +287,11 @@ function ideasInit() {
     if (copyBtn) { toast((await copyText(copyBtn.dataset.copy)) ? 'Copied' : 'Copy failed'); return; }
     if (e.target.closest('.del')) { await fetch(`/api/notes/${id}`, { method: 'DELETE' }); loadIdeas(); toast('Idea removed'); return; }
     if (e.target.closest('.pin')) { await patchNote(id, { pinned: !idea.classList.contains('pinned') }); return; }
+    if (e.target.closest('.edit')) {
+      const n = ideasCache.find((x) => x.id === id), txt = idea.querySelector('.idea-text');
+      if (n && txt) inlineEdit(txt, n.text, (val) => fetch(`/api/notes/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: val }) }), loadIdeas);
+      return;
+    }
     if (e.target.closest('.develop') || e.target.closest('.idea-text')) { const n = ideasCache.find((x) => x.id === id); if (n) developIdea(idea, n); }
   });
 }
@@ -277,7 +310,7 @@ function renderTasks(todos) {
   const open = todos.filter((t) => !t.done), done = todos.filter((t) => t.done);
   const row = (t) => `<div class="task ${t.done ? 'done' : ''}" data-id="${t.id}" draggable="true">
     <span class="box" title="Toggle">${t.done ? icon('check') : ''}</span>
-    <span class="txt">${esc(t.text)}</span>
+    <span class="txt" title="Double-click to edit">${esc(t.text)}</span>
     ${!t.done && cfg.terminalEnabled ? `<button class="run" title="Hand to Claude — open a terminal in the project and do this">${icon('boat')}</button>` : ''}
     <button class="x" title="Remove">${icon('x')}</button></div>`;
   list.innerHTML = open.map(row).join('') + done.map(row).join('');
@@ -304,6 +337,11 @@ function tasksInit() {
       await fetch(`/api/todos/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ done: !row.classList.contains('done') }) });
       loadTasks();
     }
+  });
+  $('#today-list').addEventListener('dblclick', (e) => {
+    const txt = e.target.closest('.txt'); if (!txt) return;
+    const row = txt.closest('.task'); if (!row) return; const id = row.dataset.id;
+    inlineEdit(txt, txt.textContent, (val) => fetch(`/api/todos/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: val }) }), loadTasks);
   });
   let dragId = null;
   const list = $('#today-list');
@@ -356,7 +394,7 @@ function renderJournal(items) {
     <div class="jentry" data-id="${e.id}" style="border-left-color:${moodColor(e.mood)};animation-delay:${Math.min(i * 30, 300)}ms">
       <button class="jdel" title="Remove">${icon('x')}</button>
       <div class="jmeta"><span class="jdate">${esc(fmtStamp(e.created))}</span>${e.mood ? `<span class="jmood">feeling ${esc(e.mood)}</span>` : ''}</div>
-      <div class="jtext">${esc(e.text)}</div>
+      <div class="jtext" title="Double-click to edit">${esc(e.text)}</div>
     </div>`).join('');
 }
 function renderMoodChips() {
@@ -382,6 +420,11 @@ function journalInit() {
     const del = e.target.closest('.jdel'); if (!del) return;
     const entry = del.closest('.jentry'); await fetch(`/api/journal/${entry.dataset.id}`, { method: 'DELETE' }); loadJournal(); toast('Entry removed');
   });
+  $('#journal-list').addEventListener('dblclick', (e) => {
+    const jt = e.target.closest('.jtext'); if (!jt) return;
+    const entry = jt.closest('.jentry'); if (!entry) return; const id = entry.dataset.id;
+    inlineEdit(jt, jt.textContent, (val) => fetch(`/api/journal/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: val }) }), loadJournal);
+  });
 }
 
 /* ================= gallery + lightbox ================= */
@@ -393,7 +436,7 @@ async function loadGallery() {
 }
 function renderGallery() {
   const grid = $('#gallery-grid');
-  if (!assetsCache.length) { grid.innerHTML = '<div class="gal-empty">Nothing here yet — generate or import an image to keep it.</div>'; return; }
+  if (!assetsCache.length) { grid.innerHTML = '<div class="gal-empty">Nothing here yet — paste an image URL above to keep one.<br>Oasis also auto-collects images Codex generates.</div>'; return; }
   grid.innerHTML = assetsCache.map((a, i) => `<div class="thumb" data-id="${esc(a.id)}" role="button" tabindex="0" aria-label="Open ${esc(a.name)}" style="animation-delay:${Math.min(i * 14, 320)}ms"><img loading="lazy" src="${a.rel}" alt="${esc(a.name)}"></div>`).join('');
 }
 function openGallery() { $('#gallery').classList.remove('hidden'); loadGallery(); }
@@ -709,7 +752,7 @@ function clearYouTube() { if (youtubeActive) { $('#yt-embed').innerHTML = ''; yo
 function renderYtSaved() {
   const saved = Array.isArray(cfg.ytSaved) ? cfg.ytSaved : [];
   $('#yt-saved').innerHTML = saved.map((s) =>
-    `<span class="yt-chip"><button class="yt-play" data-url="${esc(s.url)}" data-name="${esc(s.name || '')}">${esc(s.name || s.url)}</button><button class="yt-del" data-url="${esc(s.url)}" title="Remove">×</button></span>`).join('');
+    `<span class="yt-chip"><button class="yt-play" data-url="${esc(s.url)}" data-name="${esc(s.name || '')}">${esc(s.name || s.url)}</button><button class="yt-del" data-url="${esc(s.url)}" title="Remove" aria-label="Remove">${icon('x')}</button></span>`).join('');
   $('#yt-saved-empty').style.display = saved.length ? 'none' : '';
 }
 async function saveYtConfig(list) {
@@ -778,6 +821,7 @@ function paletteActions() {
   add('note', 'Open music', 'sound', () => { closePalette(); $('#player').classList.remove('collapsed'); }, 'radio');
   add('settings', 'Preferences', 'system', () => { closePalette(); openSetup(true); }, 'settings config');
   add('refresh', 'Check for updates', 'system', () => { closePalette(); checkForUpdates(false); }, 'update upgrade version new release');
+  add('save', 'Back up my data (export)', 'system', () => { closePalette(); exportData(); }, 'export backup download json save data archive');
   add('plus', 'Add a tool to the dock', 'system', () => { closePalette(); $('#tool-add').classList.remove('hidden'); $('#tool-name').focus(); }, 'launcher');
   dockTools.forEach((t) => add('arrow', `Launch ${t.name}`, 'launch', () => { closePalette(); launchTool(t.id, primaryAction(t)); }, 'open run tool project'));
   return a;
@@ -923,6 +967,7 @@ function setupInit() {
   $('#su-phase').addEventListener('click', (e) => { const b = e.target.closest('[data-phase]'); if (b) { suSel.phase = b.dataset.phase; renderSetupChoices(); } });
   $('#su-ai-recheck').addEventListener('click', () => checkAiStatus(true));
   $('#su-name').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#su-next').click(); });
+  const ex = $('#su-export'); if (ex) ex.addEventListener('click', exportData);
 }
 
 /* ================= updates (user-initiated; nothing auto-phones home) ================= */
@@ -950,19 +995,43 @@ async function applyUpdate() {
   let r = null; try { r = await (await fetch('/api/update/apply', { method: 'POST' })).json(); } catch {}
   go.disabled = false; go.textContent = 'Update now';
   if (r && r.ok) {
-    $('#update-banner').classList.add('hidden');
-    toast('Updated' + (r.latest ? ' to v' + r.latest : '') + ' — run "Restart Oasis" to load it');
+    if (r.upToDate) { $('#update-banner').classList.add('hidden'); toast('Already up to date'); return; }
+    // Applied. Offer an in-app restart so the new code actually loads — node read
+    // the old server.js once at startup, so the running process must be replaced.
+    go.classList.add('hidden');
+    $('#ub-text').textContent = 'Updated' + (r.latest ? ' to v' + r.latest : '') + ' — restart to finish.';
+    $('#ub-restart').classList.remove('hidden');
   } else {
     toast((r && r.error) || 'Update failed');
     const url = (r && r.downloadUrl) || (updateInfo && updateInfo.downloadUrl);   // fall back to a manual download
     if (url) window.open(url, '_blank', 'noopener');
   }
 }
+async function restartNow() {
+  const btn = $('#ub-restart'); if (btn) { btn.disabled = true; btn.textContent = 'Restarting…'; }
+  try { await fetch('/api/update/restart', { method: 'POST' }); } catch {}
+  // The server is stopping and relaunching; the socket will drop, then come back.
+  $('#ub-text').textContent = 'Restarting Oasis — this page will reconnect in a moment…';
+  setTimeout(() => location.reload(), 4000);
+}
 function updateInit() {
   loadVersion();
   const cu = $('#su-check-update'); if (cu) cu.addEventListener('click', () => checkForUpdates(false));
   const go = $('#ub-go'); if (go) go.addEventListener('click', applyUpdate);
+  const rs = $('#ub-restart'); if (rs) rs.addEventListener('click', restartNow);
   const dz = $('#ub-dismiss'); if (dz) dz.addEventListener('click', () => $('#update-banner').classList.add('hidden'));
+}
+
+/* ================= data export / backup (local-first) ================= */
+// One-click backup of everything in data/. The server streams it as a download
+// (Content-Disposition); nothing leaves the machine — it's the user's own data.
+function exportData() {
+  try {
+    const a = document.createElement('a');
+    a.href = '/api/export'; a.download = '';        // filename comes from the server
+    document.body.appendChild(a); a.click(); a.remove();
+    toast('Backing up your data…');
+  } catch { window.open('/api/export', '_blank', 'noopener'); }
 }
 
 /* ================= global keyboard ================= */
@@ -971,6 +1040,7 @@ function keyboardInit() {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); paletteOpen() ? closePalette() : openPalette(); return; }
     if ((e.ctrlKey || e.metaKey) && e.key === "'") { e.preventDefault(); askPopEl ? closeAskPop() : openAskHistory(); return; }
     if (e.key === 'Escape') {
+      const tmenu = $('#term-menu'); if (tmenu) { tmenu.remove(); return; }
       if (anyPopOpen()) return closeAllPops();
       if (paletteOpen()) return closePalette();
       if (relayOpen()) return closeRelay();
@@ -1006,7 +1076,7 @@ async function openAskHistory() {
   el.innerHTML = `<div class="pop-head"><h3>Recent asks</h3>${items.length ? '<button data-clear="1">clear all</button>' : ''}</div>` +
     (items.length ? items.map((h) => `<div class="pop-row" data-id="${esc(h.id)}">
         <div class="pr-main"><div class="pr-q">${esc(h.q)}</div><div class="pr-meta">${relTime(h.at)}</div></div>
-        <div class="pr-acts"><button data-reask title="Ask again">${icon('send')}</button><button data-del title="Remove">${icon('trash')}</button></div>
+        <div class="pr-acts"><button data-capture title="Capture as task, idea, or journal note">${icon('plus')}</button><button data-reask title="Ask again">${icon('send')}</button><button data-del title="Remove">${icon('trash')}</button></div>
       </div>`).join('') : '<div class="pop-empty">No questions yet — ask something above.</div>');
   document.body.appendChild(el);
   const f = $('#ask-form').getBoundingClientRect();
@@ -1021,6 +1091,8 @@ async function openAskHistory() {
     const row = e.target.closest('.pop-row'); if (!row) return; const h = items.find((x) => x.id === row.dataset.id); if (!h) return;
     if (e.target.closest('[data-del]')) { await fetch('/api/ask-history/' + h.id, { method: 'DELETE' }); openAskHistory(); return; }
     if (e.target.closest('[data-reask]')) { closeAskPop(); $('#ask-input').value = h.q; ask(h.q); return; }
+    const capBtn = e.target.closest('[data-capture]');
+    if (capBtn) { showCaptureMenu(capBtn, h.answer || h.q, h.q, capBtn.getBoundingClientRect()); return; }   // measure before closeAllPops tears the popover down
     closeAskPop(); renderAnswer(h.q, h.answer);
   };
   setTimeout(() => document.addEventListener('click', askPopOutside, true), 0);
@@ -1033,7 +1105,10 @@ function askHistoryInit() {
 /* ---- smart capture menu (answer / idea -> task, idea, journal) ---- */
 function closeCapture() { if (captureEl) { captureEl.remove(); captureEl = null; document.removeEventListener('click', captureOutside, true); } }
 function captureOutside(e) { if (captureEl && !captureEl.contains(e.target) && !e.target.closest('[data-act="capture"]')) closeCapture(); }
-function showCaptureMenu(anchor, text, q) {
+function showCaptureMenu(anchor, text, q, rect) {
+  // rect may be passed in when the anchor lives inside a popover: closeAllPops()
+  // below tears that popover down, so its button must be measured BEFORE we close.
+  if (!rect && anchor) rect = anchor.getBoundingClientRect();
   closeAllPops();
   const taskText = (q && q.trim()) ? q.trim() : text;
   const el = document.createElement('div'); el.className = 'capture-menu';
@@ -1043,7 +1118,7 @@ function showCaptureMenu(anchor, text, q) {
     <button data-c="journal">${icon('feather')}Save to journal</button>
     <button data-c="copy">${icon('copy')}Copy</button>`;
   document.body.appendChild(el);
-  const r = anchor.getBoundingClientRect();
+  const r = rect || el.getBoundingClientRect();
   el.style.left = Math.round(Math.min(r.left, window.innerWidth - el.offsetWidth - 12)) + 'px';
   el.style.top = Math.round(Math.min(r.bottom + 6, window.innerHeight - el.offsetHeight - 12)) + 'px';
   el.setAttribute('role', 'menu'); el.setAttribute('aria-label', 'Capture'); el.tabIndex = -1;
@@ -1347,7 +1422,15 @@ function relayPlan(mode, rounds) {
 }
 
 const relayOpen = () => !$('#relay').classList.contains('hidden');
-function openRelay() { $('#relay').classList.remove('hidden'); setTimeout(() => $('#rl-task').focus(), 50); }
+function openRelay() {
+  $('#relay').classList.remove('hidden');
+  // First open (empty stream): explain the two modes so it isn't a blank void.
+  const box = $('#rl-stream');
+  if (box && !box.innerHTML.trim()) {
+    box.innerHTML = '<div class="rl-note"><b>Delegate</b> — Claude plans, Codex builds &amp; critiques, then one clean synthesis. <b>Debate</b> — they argue opposing sides to a neutral verdict. Give them a task above and run.</div>';
+  }
+  setTimeout(() => $('#rl-task').focus(), 50);
+}
 function closeRelay() { $('#relay').classList.add('hidden'); }   // keep polling in the background if a run is live
 function stopRelayPoll() { if (relayPollTimer) { clearInterval(relayPollTimer); relayPollTimer = null; } }
 function setRelayBusy(b) {

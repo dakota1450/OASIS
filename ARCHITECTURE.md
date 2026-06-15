@@ -97,9 +97,10 @@ All responses are JSON via `sendJson`. POST/PATCH bodies are parsed by `readBody
 | ------------- | ------- |
 | `GET /api/activity` | Merged, cached (15s) feed of recent Claude + Codex sessions. |
 | `GET /api/ai-status` | Which CLIs are installed: `{claude, codex, codexBin}` (cached probes; `?fresh=1` re-checks after an install/sign-in). Powers the intake "Connect Claude & Codex" step. |
-| `GET /api/version` | `{version, isGit}` — the running version + whether this is a git checkout. |
+| `GET /api/version` | `{version, isGit}` — the running version (sourced from the `const VERSION` in `server.js`, now **1.1.4**) + whether this is a git checkout. |
 | `GET /api/update/check` | User-initiated: fetches the published `docs/version.json` over https and returns `{ok, current, latest, updateAvailable, notes, downloadUrl, isGit}`. The only place that compares versions (`cmpVer`). |
-| `POST /api/update/apply` | git checkout → `git pull --ff-only` (returns output, `restartNeeded`); a downloaded copy → `{ok:false, manual:true}` (the page opens `downloadUrl`). |
+| `POST /api/update/apply` | Origin-gated (cross-origin → `403`). git checkout → `git pull --ff-only` (returns output, `upToDate` when the pull is a no-op, `restartNeeded`). A downloaded copy → **self-updates in place**: downloads the new zip (cache-busted with `?v=<version>`), unpacks it with the OS tool, backs up the current app files and **rolls back on any failure**, then overwrites the program files while preserving `data/`, `assets/`, `node_modules/`, `.git/`. Returns `{ok, restartNeeded, latest}` (or `{ok:false, error, downloadUrl}`). |
+| `POST /api/update/restart` | Relaunch Oasis via the platform "Restart Oasis" launcher so a freshly applied update actually loads. Origin-gated; user-initiated only. |
 | `GET /api/notes` · `POST /api/notes` · `PATCH /api/notes/:id` · `DELETE /api/notes/:id` | Ideas CRUD. PATCH accepts `{pinned?, text?, status?}`. |
 | `POST /api/ask` | Freeform answer via `claude -p`; appends to ask-history. |
 | `GET /api/ask-history` · `DELETE /api/ask-history` · `DELETE /api/ask-history/:id` | Ask history. |
@@ -114,6 +115,7 @@ All responses are JSON via `sendJson`. POST/PATCH bodies are parsed by `readBody
 | `GET /api/todos` · `POST /api/todos` · `POST /api/todos/reorder` · `PATCH /api/todos/:id` · `DELETE /api/todos/:id` | Today list. |
 | `GET /api/journal` · `POST /api/journal` · `PATCH /api/journal/:id` · `DELETE /api/journal/:id` | Journal CRUD. |
 | `GET /api/config` · `POST /api/config` | Preferences (POST validates each field). Also returns `terminalEnabled` + the per-boot `wsToken`. |
+| `GET /api/export` | One-click local backup: a JSON bundle of everything in `data/`, sent as a download (`Content-Disposition: attachment`, `oasis-backup-<date>.json`). Nothing leaves the machine. |
 | `GET /api/tools` · `POST /api/tools` · `DELETE /api/tools/:id` · `POST /api/launch` | Tool dock: scan + custom entries + launch. |
 | `WS /term?token&kind&id` | WebSocket → PTY (the embedded terminal). Not part of `handleApi`; see below. |
 
@@ -245,7 +247,10 @@ Serving (`serveAsset`) and revealing (`revealAsset`) **decode the id and reject
 any path that doesn't resolve under an allowed root** (`underRoot`) — the
 traversal guard. There is intentionally **no** endpoint that deletes a file from
 disk. Import (`importAsset`) is `https`-only, follows ≤3 redirects, caps at 30 MB
-/ 60s, and writes into `assets/imported-<ts>.<ext>`.
+/ 60s, and **SSRF-filters the host** — it resolves the host (re-checked on every
+redirect) and refuses loopback / private / link-local (incl. the
+`169.254.169.254` metadata address) / CGNAT / unspecified addresses — and writes
+into `assets/imported-<ts>.<ext>`.
 
 ## Tool dock
 
@@ -266,18 +271,20 @@ Vanilla, no framework, no modules, no build:
 - **`app.js`** — all UI logic: the looping backdrop video with day/golden palettes
   and a still-photo fallback, the Ask bar, Ideas + inline "develop into angles",
   Today, Journal, Gallery + lightbox, music, the activity ticker, command palette,
-  focus timer, the **terminal panel** (`openTerminal` — xterm + WebSocket, tabbed
-  sessions in a movable/resizable floating panel), and the first-run setup wizard.
-  Data flows through same-origin `fetch` against the API (and the `/term` socket).
+  focus timer, inline editing of ideas/tasks/journal entries (`inlineEdit`),
+  one-click data export/backup (`exportData`), the **terminal panel**
+  (`openTerminal` — xterm + WebSocket, tabbed sessions in a movable/resizable
+  floating panel), and the first-run setup wizard. Data flows through same-origin
+  `fetch` against the API (and the `/term` socket).
 - **`vendor/`** — `xterm.js`, `xterm.css`, and `addon-fit.js`, copied verbatim
   from the `@xterm/*` packages. They're loaded with plain `<script>`/`<link>` tags
   (the UMD build exposes `window.Terminal` / `window.FitAddon`), so there is still
   no bundler or build step.
 - **`style.css`** — the sea-glass theme (transparent glass panels,
   `backdrop-filter`, light type with Georgia-italic editorial accents). The
-  terminal panel uses an **opaque dark fill, not `backdrop-filter`** — it's a large
-  surface, and blurring something that size would blow the T570 "no blur on large
-  elements" budget (a solid terminal also reads better).
+  terminal panel uses `backdrop-filter: blur(16px)` (frosted glass, leaning toward
+  a more opaque fill so it reads over the bright ocean) — it's small by default, so
+  blurring it stays within the T570 budget.
 
 Performance: the backdrop throttles and sleeps when the tab is hidden and falls
 back to a still photo if the video can't play; canvas effects are capped ~30fps;
@@ -288,7 +295,11 @@ copies keep a `<textarea>` fallback because the async Clipboard API can fail ove
 ## Distribution pipeline
 
 `package.ps1` → `dist/Oasis-{Windows,macOS}.zip` → copied into `docs/download/`.
-Each zip is a clean stage (server + `public/` + docs + **empty** data + empty
-`assets/` + the platform's launchers). Zip entries are written by hand with
-**forward-slash** separators for cross-platform extraction. `docs/` is then
-published via GitHub Pages (`/docs` on `main`). Details: [`PUBLISH.md`](PUBLISH.md).
+Each zip is a clean stage: `server.js`, `public/`, a fresh **empty** `data/`, an
+empty `assets/`, `README.md`, `LICENSE.txt`, and the platform's
+launchers/setup/icon. `docs/` is **not** bundled in the app zip — it's the
+published marketing site only. Zip entries are written by hand with
+**forward-slash** separators for cross-platform extraction. `package.ps1` also
+stamps `docs/version.json`'s version from the `const VERSION` in `server.js` so
+the two can't drift. `docs/` is then published via GitHub Pages (`/docs` on
+`main`). Details: [`PUBLISH.md`](PUBLISH.md).

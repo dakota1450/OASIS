@@ -3,7 +3,17 @@
 # Starts the local server if it isn't already running, waits until it answers,
 # then opens Oasis as its own app window (Chrome/Edge/Brave --app) or, failing
 # that, in your default browser.
-cd "$(dirname "$0")" || exit 1
+
+# Resolve the REAL script directory through any symlinks. Setup drops a Desktop
+# launcher that is a symlink to this file, so a plain `dirname "$0"` would cd into
+# ~/Desktop (no server.js there) and Oasis would never start.
+SOURCE="$0"
+while [ -h "$SOURCE" ]; do
+  DIR="$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  case "$SOURCE" in /*) ;; *) SOURCE="$DIR/$SOURCE" ;; esac
+done
+cd "$(cd -P "$(dirname "$SOURCE")" >/dev/null 2>&1 && pwd)" || exit 1
 
 PORT=7777
 URL="http://127.0.0.1:${PORT}/"

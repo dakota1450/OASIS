@@ -38,6 +38,7 @@
   <symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2M12 19.5v2M4.2 4.2l1.4 1.4M18.4 18.4l1.4 1.4M2.5 12h2M19.5 12h2M4.2 19.8l1.4-1.4M18.4 5.6l1.4-1.4"/></symbol>
   <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
   <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5h6v2M6 7l1 13h10l1-13"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 5.6l3.9 3.9M4 20l1-4L16.1 4.9a1.9 1.9 0 0 1 2.7 0l.3.3a1.9 1.9 0 0 1 0 2.7L8 19z"/></symbol>
   <symbol id="i-terminal" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 10l3 2.5-3 2.5M12.5 15.5H17"/></symbol>
   <symbol id="i-relay" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h13l-3.4-3.4M20 15H7l3.4 3.4"/></symbol>
   <symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 0 0-14.3-4.6M4 13a8 8 0 0 0 14.3 4.6"/><path d="M4 4v3.5h3.5M20 20v-3.5h-3.5"/></symbol>
@@ -227,7 +228,7 @@
 </div>
 
 <!-- ======= gallery overlay ======= -->
-<div id="gallery" class="hidden">
+<div id="gallery" class="hidden" role="dialog" aria-modal="true" aria-label="Gallery">
   <div class="gal-shade"></div>
   <div class="gal-box">
     <div class="gal-head">
@@ -240,7 +241,7 @@
 </div>
 
 <!-- ======= relay: Claude × Codex orchestration ======= -->
-<div id="relay" class="hidden">
+<div id="relay" class="hidden" role="dialog" aria-modal="true" aria-label="Relay — Claude and Codex">
   <div class="rl-shade"></div>
   <div class="rl-box">
     <div class="rl-head">
@@ -306,7 +307,7 @@
 </nav>
 
 <!-- ======= first-run setup / preferences ======= -->
-<div id="setup" class="hidden">
+<div id="setup" class="hidden" role="dialog" aria-modal="true" aria-label="Setup and preferences">
   <div class="setup-shade"></div>
   <div class="setup-card">
     <div class="setup-head">
@@ -365,7 +366,7 @@
         <button id="su-next" class="primary">Continue</button>
       </div>
     </div>
-    <div class="setup-version">Oasis <span id="su-version">v—</span><button type="button" id="su-check-update">Check for updates</button></div>
+    <div class="setup-version">Oasis <span id="su-version">v—</span><button type="button" id="su-check-update">Check for updates</button><button type="button" id="su-export">Back up data</button></div>
   </div>
 </div>
 
@@ -374,6 +375,7 @@
   <svg class="ic"><use href="#i-refresh"></use></svg>
   <span id="ub-text"></span>
   <button id="ub-go" class="primary">Update now</button>
+  <button id="ub-restart" class="primary hidden">Restart now</button>
   <button id="ub-dismiss" class="ghost" aria-label="Dismiss">Later</button>
 </div>
 

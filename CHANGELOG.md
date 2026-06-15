@@ -1,11 +1,69 @@
 # Changelog
 
 All notable changes to Oasis are recorded here. The format follows
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Oasis has not cut a
-versioned public release yet, so entries are grouped under **Unreleased** until
-the first tag.
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The current release is
+**1.1.4**; the authoritative version number lives in the `VERSION` constant in
+`server.js` (and `package.ps1` stamps it into `docs/version.json` at build time).
 
-## [Unreleased]
+## [1.1.4] — 2026-06-14
+
+### Added
+- **Edit anything inline.** Ideas, tasks, and journal entries can now be edited in
+  place — double-click a task or a journal entry, or use the new edit (pencil)
+  button on an idea. (The server already accepted `PATCH … {text}`; the UI just
+  never exposed it.)
+- **One-click data backup.** A new **Back up my data** action (command palette, plus
+  a **Back up data** button in Preferences) downloads everything in `data/` as one
+  timestamped JSON file via `GET /api/export`. It stays on your machine — nothing is
+  uploaded.
+- **Finish an update without leaving the app.** After **Update now** applies, the
+  banner now offers **Restart now**, which relaunches Oasis on the new version
+  (`POST /api/update/restart`) instead of asking you to run a launcher by hand.
+- First-run guidance in the **Relay** panel and a more helpful empty **Gallery**
+  state; modal overlays (gallery, relay, setup) now expose `role="dialog"`.
+
+### Fixed
+- **A static-file I/O error can no longer crash the server.** `serveFromDir` now
+  attaches an error handler to its read streams, so a file deleted or locked
+  mid-read tears down that one response instead of taking the whole single Node
+  process down with it (it serves every page load, so the blast radius was total).
+- **One-AI-call-at-a-time is now race-free.** Ask / Spark / Relay read the request
+  body *before* claiming the busy flag, so two near-simultaneous requests can't both
+  slip past the check and launch concurrent CLI calls.
+- **`GET /api/todos` can't 500 on older data** — the sort now tolerates a todo with
+  a missing `created`/`order` field.
+- **Self-update is safer and never stale.** The downloaded-zip self-update
+  cache-busts the download URL (so a CDN/browser cache can't hand back a stale,
+  same-named zip), backs up the current app files first, and **rolls back** if the
+  in-place copy fails partway. A git-checkout update now reports "already up to date"
+  on a no-op pull.
+
+### Security
+- **Image import is SSRF-filtered.** `importAsset` resolves the target host
+  (re-checked on every redirect) and refuses loopback / private / link-local
+  (incl. the `169.254.169.254` cloud-metadata address) / CGNAT / unspecified
+  addresses, so a pasted or redirected URL can't reach an internal service.
+- **Self-update and restart are Origin-gated.** `POST /api/update/apply` and the new
+  `POST /api/update/restart` — the only routes that rewrite program files or restart
+  the process — reject cross-origin requests with `403`.
+
+### Changed
+- **macOS launchers resolve symlinks.** `Launch`/`Restart Oasis.command` resolve the
+  real script directory through the Desktop symlink before they `cd`, so a
+  Desktop-launched Oasis starts in the right folder (it used to `cd` into `~/Desktop`
+  and the server never started). Setup now also marks `Restart Oasis.command`
+  executable.
+- **One source of truth for the version.** The `VERSION` constant in `server.js` is
+  authoritative; `package.ps1` stamps `docs/version.json` from it at build time, and
+  `package.json` is back in sync.
+
+## [1.1.0 – 1.1.3] — 2026-06-13 → 2026-06-14
+
+These shipped incrementally as the first 1.1 series: **1.1.0** introduced the relay,
+the embedded terminal, YouTube audio, the "Connect Claude & Codex" intake step, and
+in-app updates; **1.1.1** was a UX-hardening pass; **1.1.2** made downloaded copies
+self-update in place; **1.1.3** added the "Restart Oasis" launcher. They were never
+tracked as separate sections, so they're grouped here.
 
 ### Added
 - **In-app updates (user-initiated).** Oasis now knows its own version and can
@@ -175,6 +233,6 @@ was rebuilt and renamed **Oasis**):
 
 ---
 
-When you ship a user-visible change, add it under **Unreleased**. At the first
-tagged release, rename that section to the version and date and start a fresh
-**Unreleased** above it.
+When you ship a user-visible change, bump the `VERSION` constant in `server.js`
+(`package.ps1` propagates it to `docs/version.json`) and add a new
+`## [x.y.z] — YYYY-MM-DD` section at the top of this file describing it.

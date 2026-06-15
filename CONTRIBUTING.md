@@ -13,7 +13,9 @@ goal of this guide is to keep it that way. If you're an AI agent, read
 - Optional: **Codex** and its `~/.codex/generated_images` folder, to see the
   gallery and the Codex side of the activity ticker populate.
 
-There is **no `npm install`** — Oasis has zero dependencies by design.
+Oasis has a single, **optional** dependency — `node-pty`, which powers the
+embedded terminal. Run `npm install` once to enable it, but Oasis runs fine with
+no install: the terminal just stays off.
 
 ## Running locally
 
@@ -36,10 +38,14 @@ Open `http://localhost:7777`. The marketing page is previewable at
 These are non-negotiable. The full list with rationale is in
 [`AGENTS.md` §3](AGENTS.md). In short:
 
-- **Zero dependencies.** No `package.json`, no framework, no bundler, no
-  `node_modules`. Node standard library only.
+- **Near-zero dependencies.** Exactly one, and it's optional (`node-pty`). No
+  *second* dependency, no framework, no bundler; the frontend stays build-free
+  (xterm is vendored). Don't add deps casually.
 - **Local-first.** Binds `127.0.0.1:7777`. No network calls except the
-  user-initiated image import and the local `claude` CLI. **No telemetry.**
+  user-initiated image import, the local `claude` and `codex` CLIs, the music
+  panel (internet radio + optional Spotify/YouTube embeds), and the
+  user-initiated update check (a single GET of the public release manifest, never
+  automatic). See [`AGENTS.md` §3](AGENTS.md) for the full list. **No telemetry.**
 - **Cross-platform** (macOS + Windows; Linux best-effort).
 - **Performance budget = a ThinkPad T570 with integrated graphics.** No
   `filter: blur()` on large/animated elements; canvas FX ≤ ~30fps.
