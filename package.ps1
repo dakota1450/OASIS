@@ -29,8 +29,9 @@ function New-CrossZip($stageDir, $zipPath) {
   } finally { $zip.Dispose() }
 }
 
-# Stage the files every platform ships with: the server, the app, docs, fresh
-# (empty) data, and an empty assets folder for the user's own images.
+# Stage the files every platform ships with: the server, the app, fresh (empty)
+# data, and an empty assets folder for the user's own images. (docs/ is the
+# published marketing site — it is NOT bundled inside the app zip.)
 function Stage-Common($stage) {
   New-Item -ItemType Directory -Force -Path $stage | Out-Null
 
@@ -95,6 +96,19 @@ $dl = Join-Path $root 'docs\download'
 New-Item -ItemType Directory -Force -Path $dl | Out-Null
 Copy-Item $winZip (Join-Path $dl 'Oasis-Windows.zip') -Force
 Copy-Item $macZip (Join-Path $dl 'Oasis-macOS.zip') -Force
+
+# Keep the update manifest in lockstep with the shipped build: read the single
+# source of truth (the VERSION const in server.js) and stamp it into
+# docs/version.json, preserving the human notes and download URLs already there.
+$serverText = Get-Content -Raw (Join-Path $root 'server.js')
+$verMatch = [regex]::Match($serverText, "const VERSION = '([^']+)'")
+if (-not $verMatch.Success) { throw "Could not find VERSION in server.js" }
+$version = $verMatch.Groups[1].Value
+$manifestPath = Join-Path $root 'docs\version.json'
+$manifest = Get-Content -Raw $manifestPath | ConvertFrom-Json
+$manifest.version = $version
+WriteJson $manifestPath ($manifest | ConvertTo-Json -Depth 5)
+Write-Host ("  Stamped docs\version.json  version = {0}  (from server.js)" -f $version) -ForegroundColor Green
 
 # remove the old single-platform artifact if it's still lying around
 $stale = Join-Path $dl 'Oasis.zip'

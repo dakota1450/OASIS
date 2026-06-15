@@ -11,6 +11,8 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
+const dns = require('dns');
+const net = require('net');
 const { exec, spawn } = require('child_process');
 
 const IS_WIN = process.platform === 'win32';
@@ -25,10 +27,12 @@ function osOpen(target) {
 
 const PORT = Number(process.env.PORT) || 7777;
 const ROOT = __dirname;
-// Bump on every release; the published docs/version.json carries the same number
-// so a running copy can tell when a newer one has shipped. The update CHECK is
-// user-initiated only (no automatic outbound, nothing phoned home — see SECURITY.md).
-const VERSION = '1.1.3';
+// The single source of truth for the running version. Bump on every release;
+// `package.ps1` reads this string and stamps the same number into the published
+// docs/version.json (the update manifest), so the two can never drift. The update
+// CHECK is user-initiated only (no automatic outbound, nothing phoned home — see
+// SECURITY.md).
+const VERSION = '1.1.4';
 const UPDATE_MANIFEST = process.env.OASIS_UPDATE_MANIFEST || 'https://dakota1450.github.io/OASIS/version.json';
 const PUBLIC_DIR = path.join(ROOT, 'public');
 const SITE_DIR = path.join(ROOT, 'docs');                // marketing page (also the GitHub Pages site)
@@ -137,6 +141,12 @@ function shellEnv() {
 const WS_TOKEN = crypto.randomBytes(16).toString('hex');
 const WS_ORIGINS = new Set([`http://localhost:${PORT}`, `http://127.0.0.1:${PORT}`]);
 
+// CORS doesn't stop a cross-origin page from FIRING a state-changing fetch (it
+// only blocks reading the response), so high-privilege write routes reject any
+// *present* Origin that isn't Oasis's own page. A request with no Origin (curl or
+// another local tool) is the trusted local user and is allowed through.
+const badOrigin = (req) => { const o = req.headers.origin; return !!o && !WS_ORIGINS.has(o); };
+
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
@@ -176,6 +186,7 @@ function writeJson(file, value) { fs.writeFileSync(file, JSON.stringify(value, n
 function newId() { return Date.now().toString(36) + crypto.randomBytes(3).toString('hex'); }
 
 function sendJson(res, status, obj) {
+  if (res.headersSent || res.writableEnded) return;   // a second send (e.g. an async callback that already replied) would throw outside the try/catch
   res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
   res.end(JSON.stringify(obj));
 }
@@ -541,12 +552,12 @@ function extractJson(text, wantArray) {
 }
 
 async function handleSpark(req, res) {
-  if (sparkBusy) return sendJson(res, 429, { ok: false, error: 'already sparking' });
-  const body = await readBody(req);
+  let body; try { body = await readBody(req); } catch { return sendJson(res, 400, { ok: false, error: 'bad request' }); }
   const mode = ['ideas', 'expand', 'imageprompt'].includes(body.mode) ? body.mode : 'ideas';
   const seed = typeof body.seed === 'string' ? body.seed : '';
   if (mode !== 'ideas' && !seed.trim()) return sendJson(res, 400, { ok: false, error: 'seed required for ' + mode });
-  sparkBusy = true;
+  if (sparkBusy) return sendJson(res, 429, { ok: false, error: 'already sparking' });
+  sparkBusy = true;   // claim immediately after the check (no await between) — keeps one-call-at-a-time
   try {
     const result = await runClaude(buildSparkPrompt(seed, mode));
     if (!result.ok) return sendJson(res, 200, result);
@@ -585,11 +596,11 @@ QUESTION:
 ${q}`;
 }
 async function handleAsk(req, res) {
-  if (sparkBusy) return sendJson(res, 429, { ok: false, error: 'still thinking on the last one' });
-  const body = await readBody(req);
+  let body; try { body = await readBody(req); } catch { return sendJson(res, 400, { ok: false, error: 'bad request' }); }
   const q = (typeof body.q === 'string' ? body.q : '').trim();
   if (!q) return sendJson(res, 400, { ok: false, error: 'ask something first' });
-  sparkBusy = true;
+  if (sparkBusy) return sendJson(res, 429, { ok: false, error: 'still thinking on the last one' });
+  sparkBusy = true;   // claim immediately after the check (no await between) — keeps one-call-at-a-time
   try {
     const result = await runClaude(buildAskPrompt(q));
     if (!result.ok) return sendJson(res, 200, result);
@@ -804,14 +815,14 @@ async function runRelay(job) {
 }
 
 async function handleRelay(req, res) {
-  if (relayBusy) return sendJson(res, 429, { ok: false, error: 'a relay is already running' });
-  const body = await readBody(req);
+  let body; try { body = await readBody(req); } catch { return sendJson(res, 400, { ok: false, error: 'bad request' }); }
   const task = (typeof body.task === 'string' ? body.task : '').trim();
   if (!task) return sendJson(res, 400, { ok: false, error: 'describe the task first' });
   if (task.length > 6000) return sendJson(res, 400, { ok: false, error: 'task is too long (6000 char max)' });
   const mode = body.mode === 'debate' ? 'debate' : 'delegate';
   const rounds = Math.min(3, Math.max(1, parseInt(body.rounds, 10) || 1));
-  relayBusy = true;
+  if (relayBusy) return sendJson(res, 429, { ok: false, error: 'a relay is already running' });
+  relayBusy = true;   // claim immediately after the check (no await between) — keeps one-relay-at-a-time
   let codexAvailable = false;
   try { codexAvailable = await probeCodex(); } catch {}
   const job = { id: newId(), task, mode, rounds, codexAvailable, status: 'running', turns: [], startedAt: new Date().toISOString() };
@@ -857,9 +868,48 @@ function serveAsset(res, id) {
   });
 }
 
+// SSRF guard. The import URL (and any host it redirects to) is attacker-influenced,
+// so refuse to connect to non-public addresses — loopback, private, link-local
+// (incl. cloud metadata 169.254.169.254), CGNAT, and unspecified. Resolution is
+// best-effort against the IP the OS reports; full DNS-rebind pinning is out of
+// scope for a loopback-only tool (noted in SECURITY.md).
+function isBlockedIp(ip) {
+  const v = net.isIP(ip);
+  if (!v) return true;                                  // unparseable → refuse
+  if (v === 4) {
+    const p = ip.split('.').map(Number);
+    if (p[0] === 0 || p[0] === 127) return true;        // 0.0.0.0/8, 127/8 loopback
+    if (p[0] === 10) return true;                       // 10/8
+    if (p[0] === 169 && p[1] === 254) return true;      // 169.254/16 link-local + metadata
+    if (p[0] === 172 && p[1] >= 16 && p[1] <= 31) return true; // 172.16/12
+    if (p[0] === 192 && p[1] === 168) return true;      // 192.168/16
+    if (p[0] === 100 && p[1] >= 64 && p[1] <= 127) return true; // 100.64/10 CGNAT
+    return false;
+  }
+  const a = ip.toLowerCase().replace(/^\[|\]$/g, '');
+  if (a === '::' || a === '::1') return true;           // unspecified / loopback
+  if (a.startsWith('fe80') || a.startsWith('fc') || a.startsWith('fd')) return true; // link-local / ULA
+  const m = a.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);   // IPv4-mapped
+  if (m) return isBlockedIp(m[1]);
+  return false;
+}
+function resolvePublicHost(host, cb) {
+  if (net.isIP(host)) return cb(isBlockedIp(host) ? new Error('blocked') : null);
+  dns.lookup(host, { all: true }, (err, addrs) => {
+    if (err || !addrs || !addrs.length) return cb(new Error('unresolved'));
+    cb(addrs.some((a) => isBlockedIp(a.address)) ? new Error('blocked') : null);
+  });
+}
 function importAsset(url, cb, redirects = 0) {
   if (!/^https:\/\//i.test(url)) return cb({ ok: false, error: 'https url required' });
   if (redirects > 3) return cb({ ok: false, error: 'too many redirects' });
+  let host; try { host = new URL(url).hostname; } catch { return cb({ ok: false, error: 'bad url' }); }
+  resolvePublicHost(host, (blockErr) => {
+    if (blockErr) return cb({ ok: false, error: 'refused — only public https hosts can be imported' });
+    importAssetFetch(url, cb, redirects);
+  });
+}
+function importAssetFetch(url, cb, redirects) {
   let req;
   const to = setTimeout(() => { try { req.destroy(); } catch {} cb({ ok: false, error: 'import timed out' }); }, 60000);
   req = https.get(url, (resp) => {
@@ -983,9 +1033,13 @@ function applyDownloadUpdate(cb) {
     const id = newId();
     const zipPath = path.join(os.tmpdir(), 'oasis-update-' + id + '.zip');
     const exDir = path.join(os.tmpdir(), 'oasis-update-' + id);
-    const cleanup = () => { try { fs.unlinkSync(zipPath); } catch {} try { fs.rmSync(exDir, { recursive: true, force: true }); } catch {} };
+    const bakDir = path.join(os.tmpdir(), 'oasis-bak-' + id);
+    const cleanup = () => { for (const p of [zipPath, exDir, bakDir]) { try { fs.rmSync(p, { recursive: true, force: true }); } catch {} } };
     const fail = (msg) => { cleanup(); cb({ ok: false, error: msg, downloadUrl: info.downloadUrl }); };
-    downloadTo(info.downloadUrl, zipPath, (err) => {
+    // Cache-bust the download so a CDN/browser cache can't hand back a stale,
+    // same-named zip (the marketing page version-stamps its links for the same reason).
+    const dlUrl = info.downloadUrl + (info.downloadUrl.includes('?') ? '&' : '?') + 'v=' + encodeURIComponent(info.latest);
+    downloadTo(dlUrl, zipPath, (err) => {
       if (err) return fail('download failed: ' + err.message);
       extractZip(zipPath, exDir, (err2) => {
         if (err2) return fail('could not unpack the update');
@@ -995,17 +1049,44 @@ function applyDownloadUpdate(cb) {
           try { for (const d of fs.readdirSync(exDir, { withFileTypes: true })) { if (d.isDirectory() && fs.existsSync(path.join(exDir, d.name, 'server.js'))) { src = path.join(exDir, d.name); break; } } } catch {}
         }
         if (!fs.existsSync(path.join(src, 'server.js')) || !fs.existsSync(path.join(src, 'public'))) return fail('update package looked wrong — nothing changed');
+        // Back up the current app files first so a mid-copy failure (AV lock,
+        // disk full, OneDrive) rolls back instead of leaving a half-updated,
+        // potentially unstartable install.
+        const keep = (root, s) => { const rel = path.relative(root, s); return !rel || !UPDATE_PRESERVE.has(rel.split(/[\\/]/)[0]); };
+        try { fs.cpSync(ROOT, bakDir, { recursive: true, force: true, filter: (s) => keep(ROOT, s) }); } catch {}   // best-effort
         try {
-          fs.cpSync(src, ROOT, { recursive: true, force: true, filter: (s) => {
-            const rel = path.relative(src, s);
-            return !rel || !UPDATE_PRESERVE.has(rel.split(/[\\/]/)[0]);   // skip user data + node_modules
-          } });
-        } catch (e) { return fail('could not apply the update: ' + ((e && e.message) || e)); }
+          fs.cpSync(src, ROOT, { recursive: true, force: true, filter: (s) => keep(src, s) });   // skip user data + node_modules
+        } catch (e) {
+          try { fs.cpSync(bakDir, ROOT, { recursive: true, force: true }); } catch {}             // roll back
+          return fail('could not apply the update (rolled back): ' + ((e && e.message) || e));
+        }
         cleanup();
         cb({ ok: true, restartNeeded: true, latest: info.latest });
       });
     });
   });
+}
+
+// Relaunch Oasis so a freshly applied update actually loads (node reads server.js
+// once at startup, so the running process keeps serving the OLD code until it is
+// truly stopped). We spawn the platform's own "Restart Oasis" launcher fully
+// detached — it stops whatever holds the port (this process) and starts fresh —
+// then exit so the port is free for the relaunch. User-initiated only (Origin-gated).
+function restartOasis(res) {
+  const launcher = IS_WIN ? 'Restart Oasis.bat' : 'Restart Oasis.command';
+  if (!fs.existsSync(path.join(ROOT, launcher))) {
+    return sendJson(res, 200, { ok: false, error: 'restart launcher missing — run "' + launcher + '" yourself' });
+  }
+  sendJson(res, 200, { ok: true, restarting: true });
+  setTimeout(() => {
+    try {
+      const child = IS_WIN
+        ? spawn('cmd.exe', ['/c', launcher], { cwd: ROOT, detached: true, stdio: 'ignore', windowsHide: true })
+        : spawn('bash', [launcher], { cwd: ROOT, detached: true, stdio: 'ignore' });   // bash, so no exec bit needed
+      child.unref();
+    } catch {}
+    setTimeout(() => process.exit(0), 700);   // step aside so the relaunch can bind the port
+  }, 250);
 }
 
 // ---------- terminal: PTY over a hand-rolled WebSocket ----------
@@ -1149,13 +1230,20 @@ async function handleApi(req, res, url) {
   if (url.pathname === '/api/version' && req.method === 'GET') return sendJson(res, 200, { version: VERSION, isGit: isGitCheckout() });
   if (url.pathname === '/api/update/check' && req.method === 'GET') return checkUpdate((r) => sendJson(res, 200, r));
   if (url.pathname === '/api/update/apply' && req.method === 'POST') {
+    if (badOrigin(req)) return sendJson(res, 403, { ok: false, error: 'forbidden' });   // write-then-restart: no cross-origin
     if (isGitCheckout()) {
       return exec('git pull --ff-only', { cwd: ROOT, windowsHide: true, timeout: 60000 }, (err, stdout, stderr) => {
         if (err) return sendJson(res, 200, { ok: false, error: ((stderr || err.message || 'git pull failed') + '').split('\n')[0] });
-        return sendJson(res, 200, { ok: true, output: ((stdout || '') + '').slice(0, 500), restartNeeded: true });
+        const out = ((stdout || '') + '').trim();
+        const noop = /already up to date/i.test(out);
+        return sendJson(res, 200, { ok: true, output: out.slice(0, 500), upToDate: noop, restartNeeded: !noop });
       });
     }
     return applyDownloadUpdate((r) => sendJson(res, 200, r));   // downloaded copy: fetch + unpack + overwrite in place
+  }
+  if (url.pathname === '/api/update/restart' && req.method === 'POST') {
+    if (badOrigin(req)) return sendJson(res, 403, { ok: false, error: 'forbidden' });
+    return restartOasis(res);
   }
 
   // notes
@@ -1243,7 +1331,7 @@ async function handleApi(req, res, url) {
 
   // todos — the running list
   if (url.pathname === '/api/todos' && req.method === 'GET') {
-    const todos = readJson(TODOS_FILE, []).sort((a, b) => (a.order - b.order) || a.created.localeCompare(b.created));
+    const todos = readJson(TODOS_FILE, []).sort((a, b) => ((a.order || 0) - (b.order || 0)) || (a.created || '').localeCompare(b.created || ''));
     return sendJson(res, 200, todos);
   }
   if (url.pathname === '/api/todos' && req.method === 'POST') {
@@ -1325,7 +1413,7 @@ async function handleApi(req, res, url) {
     str('name'); str('buildDir'); str('spotifyClientId');
     if (['auto', 'dawn', 'day', 'dusk', 'night'].includes(body.defaultPhase)) cfg.defaultPhase = body.defaultPhase;
     if (['lofi', 'old', 'off'].includes(body.radioBank)) cfg.radioBank = body.radioBank;
-    if (Number.isInteger(body.radioStation)) cfg.radioStation = body.radioStation;
+    if (Number.isInteger(body.radioStation) && body.radioStation >= 0 && body.radioStation < 100) cfg.radioStation = body.radioStation;
     if (typeof body.showActivity === 'boolean') cfg.showActivity = body.showActivity;
     // Saved YouTube playlists/mixes ("Your YouTube"). Re-validated client-side
     // (parseYouTube) before they ever become an iframe src; never shell-touched.
@@ -1338,6 +1426,24 @@ async function handleApi(req, res, url) {
     if (typeof body.setupDone === 'boolean') cfg.setupDone = body.setupDone;
     writeJson(CONFIG_FILE, cfg);
     return sendJson(res, 200, { ok: true, config: { ...CONFIG_DEFAULTS, ...cfg } });
+  }
+
+  // export — a one-click local backup of everything in data/. It's the user's own
+  // data, streamed to their own browser as a download; nothing leaves the machine.
+  if (url.pathname === '/api/export' && req.method === 'GET') {
+    const bundle = {
+      app: 'Oasis', version: VERSION, exportedAt: new Date().toISOString(),
+      data: {
+        notes: readJson(NOTES_FILE, []), todos: readJson(TODOS_FILE, []),
+        journal: readJson(JOURNAL_FILE, []), askHistory: readJson(ASK_HISTORY_FILE, []),
+        sparks: readJson(SPARKS_FILE, []), briefings: readJson(BRIEFINGS_FILE, {}),
+        relays: readJson(RELAYS_FILE, []), tools: readJson(TOOLS_FILE, []),
+        config: readJson(CONFIG_FILE, {}),
+      },
+    };
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8',
+      'Content-Disposition': `attachment; filename="oasis-backup-${localDateKey()}.json"` });
+    return res.end(JSON.stringify(bundle, null, 2));
   }
 
   // tools
@@ -1378,6 +1484,10 @@ function serveFromDir(res, baseDir, relPath, req) {
   fs.stat(file, (err, st) => {
     if (err || !st.isFile()) { res.writeHead(404); return res.end('not found'); }
     const type = MIME[path.extname(file).toLowerCase()] || 'application/octet-stream';
+    // Stream WITH an error handler: an I/O failure AFTER stat (file deleted/locked
+    // mid-read) emits 'error' on the stream. Headers are already sent and the outer
+    // try/catch has long returned, so unhandled this would crash the single process.
+    const pipeFile = (opts) => { const s = fs.createReadStream(file, opts); s.on('error', () => { try { res.destroy(); } catch {} }); s.pipe(res); };
     const range = req && req.headers && req.headers.range;
     const m = range && /^bytes=(\d*)-(\d*)/.exec(range);
     if (m) {
@@ -1387,10 +1497,10 @@ function serveFromDir(res, baseDir, relPath, req) {
       if (isNaN(end) || end >= st.size) end = st.size - 1;
       if (start > end) { res.writeHead(416, { 'Content-Range': `bytes */${st.size}` }); return res.end(); }
       res.writeHead(206, { 'Content-Type': type, 'Content-Range': `bytes ${start}-${end}/${st.size}`, 'Accept-Ranges': 'bytes', 'Content-Length': end - start + 1 });
-      return fs.createReadStream(file, { start, end }).pipe(res);
+      return pipeFile({ start, end });
     }
     res.writeHead(200, { 'Content-Type': type, 'Content-Length': st.size, 'Accept-Ranges': 'bytes' });
-    fs.createReadStream(file).pipe(res);
+    pipeFile();
   });
 }
 function serveStatic(req, res, url) { serveFromDir(res, PUBLIC_DIR, url.pathname, req); }

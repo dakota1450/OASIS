@@ -48,8 +48,14 @@ docs/
 
 Whenever you change the app or the page:
 
+1. For a new **release**, bump the `VERSION` constant in `server.js` — that's the
+   single source of truth. `package.ps1` reads it and stamps the same number into
+   `docs/version.json` (the update manifest), so a running copy can tell a newer
+   version has shipped. (Add a matching section to `CHANGELOG.md` too.)
+2. Refresh the zips and push:
+
 ```powershell
-powershell -File package.ps1      # refreshes both zips in docs/download/
+powershell -File package.ps1      # rebuilds both zips + stamps docs/version.json from VERSION
 git add .
 git commit -m "Update Oasis"
 git push

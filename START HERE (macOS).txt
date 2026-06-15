@@ -23,3 +23,5 @@ Requirements
 
 Everything Oasis stores stays on this machine. No account, no telemetry.
 Open Oasis any time from the Desktop launcher, or run "Launch Oasis.command".
+After installing an update, run "Restart Oasis.command" once so the new
+version actually loads (Launch only reuses an already-running copy).

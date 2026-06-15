@@ -32,8 +32,9 @@ For the full feature tour see [`README.md`](README.md); for the internals see
 
 ## 2. Run / build / verify
 
-There is **no build step and no `package.json`** — this is deliberate (see the
-hard constraints). The whole app is `node server.js`.
+There is **no build step**, and the single `package.json` exists only to declare
+the one optional dependency (`node-pty`) — no scripts beyond `start`. The whole
+app is still `node server.js`.
 
 ```bash
 # Run the app (from the repo root)
@@ -117,7 +118,8 @@ target hardware. Breaking one is a regression even if the app still "works."
 server.js              The entire backend. Node HTTP server + a hand-rolled
                        WebSocket (the `upgrade` handler) bridging xterm ⇄ node-pty.
 package.json           The one dependency (node-pty). No scripts beyond `start`.
-node_modules/          node-pty only (gitignored, not shipped in the zips).
+package-lock.json      Lockfile for that single dependency.
+node_modules/          node-pty + its transitive dep node-addon-api (gitignored, not shipped).
 public/                The frontend (served at /).
   index.html             Shell + inline SVG icon set (NO emoji in the UI).
   app.js                 All UI logic (vanilla JS, no modules) — incl. the terminals.
@@ -132,8 +134,10 @@ data/                   Local user state as JSON (gitignored, recreated on boot)
 assets/                 User-imported/generated images (gitignored).
 package.ps1            Builds the two distributable zips into docs/download/.
 setup.ps1             Windows first-run setup (Node check, shortcut, open).
-*.bat / *.vbs          Windows launchers.
-*.command              macOS launchers (must stay LF — see .gitattributes).
+*.bat / *.vbs          Windows launchers (incl. `Restart Oasis.bat`).
+*.command              macOS launchers (incl. `Restart Oasis.command`; must stay LF — see .gitattributes).
+oasis.ico             Windows app icon (shipped in the Windows zip).
+LICENSE.txt           Project license.
 README.md             End-user guide.
 PUBLISH.md            How to deploy the docs/ site on GitHub Pages.
 SPEC-v2.md            Historical build spec (reference, not gospel).
@@ -252,7 +256,14 @@ code, keep every one of these intact:
   containing `"`, `` ` ``, `$`, or line breaks before they're interpolated into a
   shell command.
 - **Image import is constrained:** `https` only, ≤3 redirects, 30 MB cap, 60s
-  timeout, written into `assets/` only.
+  timeout, written into `assets/` only — and **SSRF-filtered**: the host is resolved
+  (re-checked on every redirect) and loopback / private / link-local (incl. cloud
+  metadata) / CGNAT / unspecified addresses are refused.
+- **Self-update & restart are Origin-gated.** `POST /api/update/apply` and
+  `POST /api/update/restart` — the only routes that rewrite program files or restart
+  the process — reject any foreign `Origin` (→ `403`). The self-update overwrites in
+  place while preserving `data/` / `assets/` / `node_modules/` / `.git/`, and rolls
+  back from a backup if the copy fails.
 - **Request bodies are capped** at 2 MB (`readBody`).
 - **There is no delete-from-disk endpoint** for gallery assets — by design.
 - **The terminal WebSocket (`/term`) is the highest-privilege surface** — it

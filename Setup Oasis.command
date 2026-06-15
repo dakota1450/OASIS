@@ -23,7 +23,7 @@ fi
 echo "  Node.js $(node --version) found."
 
 # Make the launch scripts double-clickable from Finder.
-chmod +x "Launch Oasis.command" "Setup Oasis.command" 2>/dev/null
+chmod +x "Launch Oasis.command" "Restart Oasis.command" "Setup Oasis.command" 2>/dev/null
 
 # Drop a Desktop launcher so Oasis is one click away.
 LINK="$HOME/Desktop/Launch Oasis.command"

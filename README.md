@@ -58,6 +58,14 @@ telemetry, nothing phoned home.
   resize it from the sides or corners (it remembers where you left it). Fresh
   terminals open **inside your Oasis project**; resume a past Claude session in
   its own project folder.
+- **Edit anything inline** — double-click a task or a journal entry, or hit the
+  edit (pencil) button on an idea, to rename or rewrite it right in place.
+- **One-click backup** — export everything in your data folder to a single JSON
+  file (Command palette → "Back up my data", or the **Back up data** button in
+  Preferences). It stays on your machine.
+- **In-app updates & restart** — when there's a new version, **Update now**
+  applies it, then a **Restart now** button reloads Oasis on the new version — no
+  manual relaunch needed.
 - **Command palette** (`Ctrl K`), **focus timer**, and **scenes** round it out.
 
 ---
@@ -66,9 +74,11 @@ telemetry, nothing phoned home.
 
 - macOS (Apple silicon or Intel) **or** Windows 10 / 11
 - [Node.js](https://nodejs.org/en/download) (free; LTS recommended)
-- Recommended for the full experience: **Claude Code** (for Ask and Ideas) and
-  **Codex** (its generated images flow into the Gallery). Oasis still runs fine
-  without them — those panels simply stay quiet.
+- Recommended for the full experience: **Claude Code** — the local `claude` CLI
+  powers Ask, Ideas "develop into angles", the daily briefing, and the
+  Claude × Codex relay. **Codex** is optional: it powers the relay's second model,
+  and its generated images flow into the Gallery. Oasis still runs fine without
+  them — those panels simply stay quiet.
 
 ---
 
@@ -156,12 +166,18 @@ docs/                  the GitHub Pages marketing site + the downloads
     Oasis-macOS.zip
 data/                  your ideas, tasks, journal, preferences (local only)
 assets/                images you import or keep
+node_modules/          the one optional dep (node-pty + its node-addon-api) — gitignored
 Setup Oasis.bat        Windows first-run setup for a fresh download
 Launch Oasis.bat       Windows silent launcher (-> Oasis.vbs)
+Restart Oasis.bat      Windows: fully restart so an applied update loads (Launch reuses a running server)
 Setup Oasis.command    macOS first-run setup
 Launch Oasis.command   macOS launcher (starts the server, opens an app window)
+Restart Oasis.command  macOS: fully restart so an applied update loads (Launch reuses a running server)
 START HERE (macOS).txt macOS quick-start + Gatekeeper note
 Package Oasis.bat      build clean Windows + macOS zips into docs\download\
+oasis.ico              the Windows app icon
+package.json           pins the single optional dependency (node-pty)
+package-lock.json      locks node-pty's resolved version
 PUBLISH.md             how to publish the site on GitHub Pages
 AGENTS.md              guide for AI coding agents (Codex, Claude Code, …)
 CLAUDE.md              Claude Code pointer → AGENTS.md
@@ -169,6 +185,7 @@ ARCHITECTURE.md        how the system fits together
 CONTRIBUTING.md        dev setup, conventions, build & publish
 SECURITY.md            threat model, the guards, and how to report
 CHANGELOG.md           notable changes
+LICENSE.txt            the license
 ```
 
 ---
