@@ -218,6 +218,24 @@
     display:flex;flex-wrap:wrap;gap:8px 14px;justify-content:center;}
   .finered b{color:var(--aqua-deep);font-weight:400;}
 
+  /* macOS one-line installer — the Gatekeeper-proof path */
+  .macterm{margin:26px auto 0;max-width:560px;text-align:left;}
+  .macterm-h{font-family:var(--mono);font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--aqua-deep);
+    display:flex;align-items:center;gap:8px;margin-bottom:9px;justify-content:center;}
+  .macterm-cmd{display:flex;align-items:center;gap:10px;padding:13px 14px 13px 17px;border-radius:13px;
+    border:1px solid rgba(245,251,253,.2);background:rgba(2,16,22,.66);-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);}
+  .macterm-cmd code{flex:1;min-width:0;font-family:var(--mono);font-size:12.5px;color:#cdeef0;white-space:nowrap;overflow-x:auto;
+    letter-spacing:.01em;scrollbar-width:none;}
+  .macterm-cmd code::-webkit-scrollbar{display:none;}
+  .macterm-copy{flex:none;cursor:pointer;font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:#04222c;font-weight:700;
+    background:var(--aqua);border:0;border-radius:8px;padding:7px 12px;transition:filter .15s,transform .1s;}
+  .macterm-copy:hover{filter:brightness(1.08);} .macterm-copy:active{transform:scale(.95);}
+  .macterm-copy.done{background:var(--coral);}
+  .macterm-note{margin-top:9px;font-family:var(--mono);font-size:10.5px;letter-spacing:.05em;color:var(--faint);text-align:center;line-height:1.5;}
+  .macterm-note a{color:var(--aqua-deep);} .macterm-note a:hover{color:var(--ink);}
+  .macterm details{margin-top:6px;} .macterm summary{cursor:pointer;color:var(--aqua-deep);}
+  .macterm details code{color:#cdeef0;background:rgba(2,16,22,.6);padding:1px 5px;border-radius:4px;}
+
   /* colophon */
   .colophon{position:relative;z-index:10;padding:40px var(--pad) 56px;display:flex;flex-wrap:wrap;gap:10px 22px;align-items:center;justify-content:center;
     font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--faint);text-align:center;background:linear-gradient(180deg,transparent,rgba(3,20,28,.7));}
@@ -401,6 +419,18 @@
           <span class="om"><span class="on">Download for Windows</span><span class="os">Oasis-Windows.zip · Windows 10 / 11</span></span>
         </a>
       </div>
+
+      <div class="macterm reveal" data-d="2" id="macterm">
+        <div class="macterm-h"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l6-6-6-6M12 19h8"/></svg> macOS — paste in Terminal (no Gatekeeper block)</div>
+        <div class="macterm-cmd">
+          <code id="macterm-code">curl -fsSL https://dakota1450.github.io/OASIS/install.sh | bash</code>
+          <button class="macterm-copy" id="macterm-copy" type="button">Copy</button>
+        </div>
+        <div class="macterm-note">
+          Recommended on macOS. A browser-downloaded zip is quarantined and recent macOS blocks it with no “Open Anyway” — installing from Terminal sidesteps that entirely. Needs <a href="https://nodejs.org/en/download" target="_blank" rel="noopener">Node</a>; nothing leaves your machine. <a href="./install.sh" target="_blank" rel="noopener">Read the script.</a>
+          <details><summary>Prefer the zip above?</summary>If macOS says it’s damaged or won’t open, run once in Terminal: <code>xattr -dr com.apple.quarantine ~/Downloads/Oasis-macOS &amp;&amp; chmod +x ~/Downloads/Oasis-macOS/*.command</code> — then double-click <b>Setup Oasis.command</b>.</details>
+        </div>
+      </div>
       <div class="finered reveal" data-d="3" id="finered">
         <span><b>REQUIRES</b> Node, free</span>
         <span><b>DATA</b> stays on your disk</span>
@@ -561,6 +591,22 @@
     var isPhone = /android|iphone|ipod/i.test(ua);
     if(isMac && !isWin && !isIpad && !isPhone){ mac.classList.add('detected'); row.insertBefore(mac, win); }
     else if(isWin && !isPhone){ win.classList.add('detected'); row.insertBefore(win, mac); }
+    // On macOS, lift the Terminal one-liner above the (quarantine-prone) zip buttons.
+    var mt = document.getElementById('macterm');
+    if(mt && isMac && !isWin && !isIpad && !isPhone){ var ec = row.parentNode; ec.insertBefore(mt, row); }
+  })();
+
+  /* ---------- copy the macOS install command ---------- */
+  (function(){
+    var btn = document.getElementById('macterm-copy'), code = document.getElementById('macterm-code');
+    if(!btn || !code) return;
+    btn.addEventListener('click', function(){
+      var text = code.textContent.trim();
+      var done = function(){ btn.textContent = 'Copied'; btn.classList.add('done'); setTimeout(function(){ btn.textContent = 'Copy'; btn.classList.remove('done'); }, 1800); };
+      if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(text).then(done, function(){ fallback(text, done); }); }
+      else fallback(text, done);
+    });
+    function fallback(text, done){ try { var ta = document.createElement('textarea'); ta.value = text; ta.style.position='fixed'; ta.style.opacity='0'; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); done(); } catch(e){} }
   })();
 })();
 </script>

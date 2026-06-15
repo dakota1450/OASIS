@@ -1,6 +1,6 @@
 {
-  "version": "1.1.3",
-  "notes": "Reliable restart: a new \"Restart Oasis\" launcher fully stops the running server and relaunches, so an updated version actually loads (the old Launch just reused a running copy). Updates still apply in place and keep your data.",
+  "version": "1.2.0",
+  "notes": "Voice control - talk to Oasis hands-free with a wake word or push-to-talk; it answers aloud through your local claude CLI and runs commands ('add a task...', 'brief me', 'start a 25 minute timer', 'make it night'). New: voice dictation (speak and it types, with spoken punctuation), read-back ('what's on my plate'), and a Console for fully customizable keyboard shortcuts plus voice settings. Voice is opt-in and the mic only opens while you're listening.",
   "windows": "https://dakota1450.github.io/OASIS/download/Oasis-Windows.zip",
   "macos": "https://dakota1450.github.io/OASIS/download/Oasis-macOS.zip"
 }

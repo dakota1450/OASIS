@@ -274,8 +274,14 @@ Vanilla, no framework, no modules, no build:
   focus timer, inline editing of ideas/tasks/journal entries (`inlineEdit`),
   one-click data export/backup (`exportData`), the **terminal panel**
   (`openTerminal` — xterm + WebSocket, tabbed sessions in a movable/resizable
-  floating panel), and the first-run setup wizard. Data flows through same-origin
-  `fetch` against the API (and the `/term` socket).
+  floating panel), the first-run setup wizard, the **keymap** (a registry of
+  rebindable actions + a chord dispatcher that replaced the hardcoded keyboard
+  handler; overrides in `localStorage` `oasis_keymap`), **voice control** (Web
+  Speech `SpeechRecognition` in, `speechSynthesis` out, a small command grammar in
+  `handleUtterance`, and the arc-reactor HUD; prefs in `localStorage`
+  `oasis_voice`), and the **Console** overlay (Voice + Shortcuts tabs). Data flows
+  through same-origin `fetch` against the API (and the `/term` socket); voice and
+  keymap are pure client-side — they add **no** server routes and no dependency.
 - **`vendor/`** — `xterm.js`, `xterm.css`, and `addon-fit.js`, copied verbatim
   from the `@xterm/*` packages. They're loaded with plain `<script>`/`<link>` tags
   (the UMD build exposes `window.Terminal` / `window.FitAddon`), so there is still
@@ -288,7 +294,10 @@ Vanilla, no framework, no modules, no build:
 
 Performance: the backdrop throttles and sleeps when the tab is hidden and falls
 back to a still photo if the video can't play; canvas effects are capped ~30fps;
-no `filter: blur()` on large/animated elements (the T570 budget). Clipboard
+no `filter: blur()` on large/animated elements (the T570 budget) — the voice HUD's
+orb animates with transform/opacity only. Voice recognition also stops when the
+tab is hidden (`voiceSleep` in the visibility handler) — for the mic-rest and the
+perf budget alike — and resumes hands-free listening when it returns. Clipboard
 copies keep a `<textarea>` fallback because the async Clipboard API can fail over
 `http://localhost`.
 
