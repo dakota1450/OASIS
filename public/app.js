@@ -165,16 +165,17 @@ async function ask(q, speakIt) {
   q = (q || '').trim();
   if (!q) { $('#ask-input').focus(); return; }
   if (asking) { toast('Still thinking on the last one'); if (speakIt) voiceSay('Still thinking on the last one.'); return; }
-  asking = true; const gen = ++askGen; $('#ask').classList.add('busy'); $('#ask-go').disabled = true; $('#ask-ideas').disabled = true;
+  asking = true; const gen = ++askGen; const vHeard = speakIt ? lastHeard : null;   // attribute the spoken answer to this question, not whatever's said during the wait
+  $('#ask').classList.add('busy'); $('#ask-go').disabled = true; $('#ask-ideas').disabled = true;
   fillAnswer(`<div class="ans-card thinking"><span class="ripple-dots"><i></i><i></i><i></i></span>Thinking…</div>`);
   try {
     const r = await fetch('/api/ask', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ q }) });
     const data = await r.json();
     if (gen !== askGen) return;                                  // dismissed / superseded
-    if (!data.ok) { clearAnswer(); toast(data.error || 'No answer came back'); if (speakIt) voiceSay("I couldn't reach the assistant."); return; }
+    if (!data.ok) { clearAnswer(); toast(data.error || 'No answer came back'); if (speakIt) voiceSay("I couldn't reach the assistant.", { heard: vHeard }); return; }
     renderAnswer(q, data.answer);
-    if (speakIt) voiceSay(data.answer, { followup: true });      // read the answer aloud; stay armed for a follow-up
-  } catch { if (gen === askGen) { clearAnswer(); toast("Couldn't reach the assistant"); if (speakIt) voiceSay("I couldn't reach the assistant."); } }
+    if (speakIt) voiceSay(data.answer, { followup: true, heard: vHeard });      // read the answer aloud; stay armed for a follow-up
+  } catch { if (gen === askGen) { clearAnswer(); toast("Couldn't reach the assistant"); if (speakIt) voiceSay("I couldn't reach the assistant.", { heard: vHeard }); } }
   finally { asking = false; $('#ask').classList.remove('busy'); $('#ask-go').disabled = false; $('#ask-ideas').disabled = false; }
 }
 function renderAnswer(q, answer) {
@@ -1735,7 +1736,7 @@ async function copyStashByVoice(q) {
 /* ================= weekly digest — "recap my week" ================= */
 /* A richer cousin of the daily briefing: a 7-day rollup + a couple of warm,
    Claude-written sentences. Cached server-side per day; spoken when asked by voice. */
-function renderDigest(data, speakIt) {
+function renderDigest(data, speakIt, heard) {
   const s = data.stats || {};
   const line = data.reflection || (data.pending ? 'Looking back over your week…' : 'A fresh week — not much logged yet.');
   const chip = (val, label) => `<span class="brief-chip"><b>${val}</b> ${label}</span>`;
@@ -1749,19 +1750,20 @@ function renderDigest(data, speakIt) {
       ${chip(s.journal || 0, s.journal === 1 ? 'journal entry' : 'journal entries')}
       ${s.mood ? `<span class="brief-chip"><span class="dot" style="background:${moodColor(s.mood)}"></span>${esc(s.mood)}</span>` : ''}
     </div></div>`);
-  if (speakIt && data.reflection) voiceSay(data.reflection);
-  else if (speakIt && !data.pending) voiceSay('Not much logged this week yet.');
+  if (speakIt && data.reflection) voiceSay(data.reflection, { heard });
+  else if (speakIt && !data.pending) voiceSay('Not much logged this week yet.', { heard });
 }
-async function showDigest(speakIt) {
+async function showDigest(speakIt, heard) {
+  if (heard === undefined) heard = speakIt ? lastHeard : null;   // attribute the spoken recap to the request, not a later utterance
   closeAllPops();
   const gen = ++askGen;
   fillAnswer(`<div class="ans-card thinking"><span class="ripple-dots"><i></i><i></i><i></i></span>Looking back over your week…</div>`);
   try {
     const data = await (await fetch('/api/digest')).json();
     if (gen !== askGen) return;
-    renderDigest(data, speakIt);
-    if (data.pending) setTimeout(async () => { try { const d2 = await (await fetch('/api/digest')).json(); if (gen === askGen && !d2.pending) renderDigest(d2, speakIt); } catch {} }, 7000);
-  } catch { if (gen === askGen) { clearAnswer(); toast('Could not load your weekly recap'); if (speakIt) voiceSay("I couldn't put together your week."); } }
+    renderDigest(data, speakIt, heard);
+    if (data.pending) setTimeout(async () => { try { const d2 = await (await fetch('/api/digest')).json(); if (gen === askGen && !d2.pending) renderDigest(d2, speakIt, heard); } catch {} }, 7000);
+  } catch { if (gen === askGen) { clearAnswer(); toast('Could not load your weekly recap'); if (speakIt) voiceSay("I couldn't put together your week.", { heard }); } }
 }
 
 /* ================= voice — "Jarvis" (Web Speech: STT in, TTS out) ================= */
@@ -1825,7 +1827,7 @@ function plainSpeech(s) {
 function voiceSay(text, opts) {
   const s = plainSpeech(text); if (!s) return;
   lastSpokenText = s;
-  recordExchange(s);
+  recordExchange(s, opts && opts.heard != null ? opts.heard : null);
   hud.cap(s, 'reply');
   if (!voicePrefs.speak || !SYNTH) { hud.idleHide(); maybeFollowUp(opts); return; }
   try {
@@ -2092,6 +2094,7 @@ async function smartHandle(said) {
   hud.state('thinking'); hud.cap('Thinking…', 'hint');
   let intent = null;
   try { intent = await askIntent(said); } catch {}
+  lastHeard = said;                                    // restore attribution — a slow intent call may have been interleaved with another utterance
   if (intent && intent.action && intent.action !== 'none') { dispatchIntent(intent); return; }
   // not an action — a genuine question: answer it in full, read aloud
   $('#ask-input').value = said; hud.state('thinking'); voiceAsk(said);
@@ -2106,7 +2109,7 @@ async function askIntent(text) {
 async function intentContext() {
   let tasks = [];
   try { tasks = ((await (await fetch('/api/todos')).json()) || []).filter((x) => !x.done).slice(0, 12).map((x) => x.text); } catch {}
-  return { tasks, tools: (dockTools || []).map((x) => x.name).slice(0, 24), now: new Date().toString() };
+  return { tasks, tools: (dockTools || []).map((x) => x.name).slice(0, 24) };
 }
 function dispatchIntent(it) {
   const a = it.action, args = it.args || {}, say = it.say || '';
@@ -2169,9 +2172,12 @@ function quickAnswer(t) {
   return null;
 }
 
-/* ---- transcript: every spoken reply is logged with what was last heard ---- */
-function recordExchange(spoken) {
-  const heard = lastHeard; lastHeard = '';
+/* ---- transcript: every spoken reply is logged with what was last heard.
+   An async reply (Ask, digest) passes the utterance it was kicked off from, so a
+   command that interleaves during the wait can't steal the attribution. ---- */
+function recordExchange(spoken, heardOverride) {
+  const heard = heardOverride != null ? heardOverride : lastHeard;
+  lastHeard = '';
   jarvisLog.unshift({ at: Date.now(), heard, said: spoken });
   if (jarvisLog.length > 40) jarvisLog.length = 40;
   try { localStorage.setItem('oasis_jarvis_log', JSON.stringify(jarvisLog)); } catch {}
