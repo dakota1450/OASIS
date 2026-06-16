@@ -2,8 +2,64 @@
 
 All notable changes to Oasis are recorded here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). The current release is
-**1.2.0**; the authoritative version number lives in the `VERSION` constant in
+**1.4.0**; the authoritative version number lives in the `VERSION` constant in
 `server.js` (and `package.ps1` stamps it into `docs/version.json` at build time).
+
+## [1.4.0] — 2026-06-15
+
+### Added
+- **Stash — a snippet & clipboard vault.** Keep a command, link, prompt, or any
+  scrap of text and copy it back later — by click or by voice. Open it from the
+  new header chip, the command palette, or `C`; capture inline; **pin** the ones
+  you reach for and **search** the rest. By voice: *"stash this: npm run deploy"*,
+  *"what's in my stash?"*, *"copy the deploy command"*. Server-backed so it
+  persists; pinned items float to the top.
+- **Weekly digest — "recap my week."** A richer cousin of the daily briefing: a
+  seven-day rollup (tasks completed/open, ideas captured, journal entries + your
+  dominant mood, agent sessions) wrapped in a couple of warm, Claude-written
+  sentences. Ask by voice (*"recap my week"*, *"how was my week?"*) or from the
+  palette. Cached once per day, so a re-ask is instant.
+- Both tools are wired into the **intent engine** (new actions `stash_add` /
+  `stash_read` / `stash_copy` / `digest`), the phrasebook, the command palette,
+  and the keyboard — so they're reachable however you like to work.
+
+### Notes
+- Still zero new dependencies, localhost-only, no telemetry. Stash is entirely
+  local; the digest reuses the same local `claude` CLI as the daily briefing.
+
+## [1.3.0] — 2026-06-15
+
+### Added
+- **Jarvis can now *act* on what you say, not just on what it can pattern-match.**
+  A new **intent engine** (`POST /api/intent`) hands any phrasing the local
+  command grammar doesn't recognise to your `claude` CLI, which classifies it into
+  a single structured action and extracts its arguments — so *"jot down that I
+  need to renew my domain"* captures a task, *"wrap up the timer"* stops it, and so
+  on, without needing the exact magic words. It's a **classifier, not an answerer**:
+  anything that's really a question still comes back as "none" and gets your full,
+  considered spoken Ask. Same local CLI, no new dependency, nothing new leaves the
+  machine.
+- **Reminders — "remind me to call Sam in 20 minutes."** A genuine new tool: say
+  *"remind me to … in 20 minutes / at 3 PM / tomorrow at 9 / tonight"* (or add one
+  in the new Jarvis console). When it's due, Oasis **chimes, speaks the reminder,
+  and shows it on the orb** — and because the chime + toast always fire, reminders
+  work even with the voice turned off. Ask *"what are my reminders?"* or *"cancel
+  that reminder"* / *"clear all reminders"* anytime. They persist across reloads
+  and even fire if they came due while the tab was hidden.
+- **Instant local answers.** Quick math (*"what's 12 times 7"*), percentages
+  (*"15% of 240"*), and unit/temperature conversions (*"convert 10 km to miles"*,
+  *"20 C to F"*) are answered **on-device, instantly** — no model call, works
+  offline.
+- **A Jarvis command center.** A new **Console → Jarvis** tab (palette: "Jarvis
+  console", or `Shift R`) manages your reminders and shows a **live transcript** of
+  what Jarvis last heard and did.
+- More natural voice grammar throughout: reminder, read-back, and tool-launch
+  phrasings were widened, and the spoken "help" now lists the new powers.
+
+### Notes
+- No new dependency, still localhost-only, still no telemetry. The intent engine
+  reuses the same local `claude` CLI as Ask; reminders and quick-answers are
+  entirely local.
 
 ## [1.2.0] — 2026-06-14
 

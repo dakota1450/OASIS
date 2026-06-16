@@ -76,6 +76,9 @@ sensible empty seed.
 | `ask-history.json`   | `[{id, q, answer, at}]` (last 30) | Ask |
 | `briefings.json`     | `{ "<YYYY-MM-DD>": {insight, stats, generatedAt} }` | Daily briefing |
 | `relays.json`        | `[{id, task, mode, rounds, codexAvailable, status, turns:[…], startedAt, finishedAt}]` (last 20) | Relay (Claude × Codex) |
+| `reminders.json`     | `[{id, text, due, done, created}]` (last 200) | Voice reminders (fired client-side) |
+| `stash.json`         | `[{id, text, label, pinned, created}]` (last 500) | Stash (snippet / clipboard vault) |
+| `digests.json`       | `{ "<YYYY-MM-DD>": {reflection, stats, generatedAt} }` | Weekly digest (one cached reflection/day) |
 | `tools.json`         | `[{id, name, target}]` (user-added dock entries) | Tool dock |
 | `config.json`        | preferences (see below) | Setup wizard / Settings |
 
@@ -97,14 +100,16 @@ All responses are JSON via `sendJson`. POST/PATCH bodies are parsed by `readBody
 | ------------- | ------- |
 | `GET /api/activity` | Merged, cached (15s) feed of recent Claude + Codex sessions. |
 | `GET /api/ai-status` | Which CLIs are installed: `{claude, codex, codexBin}` (cached probes; `?fresh=1` re-checks after an install/sign-in). Powers the intake "Connect Claude & Codex" step. |
-| `GET /api/version` | `{version, isGit}` — the running version (sourced from the `const VERSION` in `server.js`, now **1.1.4**) + whether this is a git checkout. |
+| `GET /api/version` | `{version, isGit}` — the running version (sourced from the `const VERSION` in `server.js`, now **1.4.0**) + whether this is a git checkout. |
 | `GET /api/update/check` | User-initiated: fetches the published `docs/version.json` over https and returns `{ok, current, latest, updateAvailable, notes, downloadUrl, isGit}`. The only place that compares versions (`cmpVer`). |
 | `POST /api/update/apply` | Origin-gated (cross-origin → `403`). git checkout → `git pull --ff-only` (returns output, `upToDate` when the pull is a no-op, `restartNeeded`). A downloaded copy → **self-updates in place**: downloads the new zip (cache-busted with `?v=<version>`), unpacks it with the OS tool, backs up the current app files and **rolls back on any failure**, then overwrites the program files while preserving `data/`, `assets/`, `node_modules/`, `.git/`. Returns `{ok, restartNeeded, latest}` (or `{ok:false, error, downloadUrl}`). |
 | `POST /api/update/restart` | Relaunch Oasis via the platform "Restart Oasis" launcher so a freshly applied update actually loads. Origin-gated; user-initiated only. |
 | `GET /api/notes` · `POST /api/notes` · `PATCH /api/notes/:id` · `DELETE /api/notes/:id` | Ideas CRUD. PATCH accepts `{pinned?, text?, status?}`. |
 | `POST /api/ask` | Freeform answer via `claude -p`; appends to ask-history. |
+| `POST /api/intent` | The voice "brain". Body `{text, context:{tasks,tools,now}}`. Classifies ONE spoken request into a single structured action via `claude -p` (it does **not** answer) and returns `{ok, intent:{action, args, say}}`; a non-action comes back as `action:'none'` so the frontend routes it to a full spoken Ask. Untrusted output is sliced to balanced JSON and shape-checked; the action must be in `INTENT_ACTIONS`. Shares the one-call-at-a-time `sparkBusy` lock (`429` if busy). |
 | `GET /api/ask-history` · `DELETE /api/ask-history` · `DELETE /api/ask-history/:id` | Ask history. |
 | `GET /api/briefing` | One cached warm sentence per local day, with stats. |
+| `GET /api/digest` | The weekly recap. Computes a 7-day rollup (`done/open/ideas/journal/mood/reminders/claude/codex`) and returns it immediately; the reflection is one cached `runClaude` per local day (shares `sparkBusy`, `pending:true` on a collision). |
 | `POST /api/spark` | Idea generation. Body `{seed, mode:'ideas'|'expand'|'imageprompt'}`. |
 | `GET /api/sparks` | Last 20 spark batches. |
 | `POST /api/relay` | Start a Claude × Codex relay. Body `{task, mode:'delegate'|'debate', rounds:1-3}`. Returns `{ok, id}`; runs as a background job. |
@@ -114,6 +119,8 @@ All responses are JSON via `sendJson`. POST/PATCH bodies are parsed by `readBody
 | `GET /asset/:id` | Image bytes for an asset (root-jailed, `Cache-Control: max-age=3600`). |
 | `GET /api/todos` · `POST /api/todos` · `POST /api/todos/reorder` · `PATCH /api/todos/:id` · `DELETE /api/todos/:id` | Today list. |
 | `GET /api/journal` · `POST /api/journal` · `PATCH /api/journal/:id` · `DELETE /api/journal/:id` | Journal CRUD. |
+| `GET /api/reminders` · `POST /api/reminders` · `PATCH /api/reminders/:id` · `DELETE /api/reminders/:id` | Voice reminders. POST `{text, due}` (ISO; validated + horizon-capped at 1 year). The alert (chime + spoken line) fires in the page; the server is durable storage. |
+| `GET /api/stash` · `POST /api/stash` · `PATCH /api/stash/:id` · `DELETE /api/stash/:id` | Stash (snippet/clipboard vault). POST `{text, label?}` (text ≤ 8 KB); PATCH accepts `{pinned?, text?, label?}`. Pinned items sort first, then newest. |
 | `GET /api/config` · `POST /api/config` | Preferences (POST validates each field). Also returns `terminalEnabled` + the per-boot `wsToken`. |
 | `GET /api/export` | One-click local backup: a JSON bundle of everything in `data/`, sent as a download (`Content-Disposition: attachment`, `oasis-backup-<date>.json`). Nothing leaves the machine. |
 | `GET /api/tools` · `POST /api/tools` · `DELETE /api/tools/:id` · `POST /api/launch` | Tool dock: scan + custom entries + launch. |
@@ -121,7 +128,8 @@ All responses are JSON via `sendJson`. POST/PATCH bodies are parsed by `readBody
 
 ## AI integration (`runClaude`)
 
-The Ask, Spark/develop, and briefing features call the **local `claude` CLI**:
+The Ask, Spark/develop, briefing, and **voice-intent** features call the
+**local `claude` CLI**:
 
 ```js
 spawn('claude -p', { shell: true, stdio: ['pipe','pipe','pipe'] })
@@ -134,15 +142,21 @@ spawn('claude -p', { shell: true, stdio: ['pipe','pipe','pipe'] })
 - `stdin.end()` is required or `claude` blocks ~3s waiting for input.
 - 120s timeout, then kill → `{ok:false, error:'spark timed out'}`.
 
-Prompt builders (`buildSparkPrompt`, `buildAskPrompt`, the inline briefing prompt)
-demand **strict JSON / single-line output**. Model output is never trusted:
+Prompt builders (`buildSparkPrompt`, `buildAskPrompt`, `buildIntentPrompt`, the
+inline briefing prompt) demand **strict JSON / single-line output**. `buildIntentPrompt`
+is a pure *classifier* — it lists the actions Jarvis can perform and asks the model
+to pick one and extract its args (never to answer), which keeps the call fast and the
+behaviour predictable. Model output is never trusted:
 `extractJson(text, wantArray)` slices from the first `[`/`{` to the last `]`/`}`
 and `JSON.parse`s; shape is then validated; failure degrades to
 `{ok:false, error:'could not parse'}`.
 
-**Concurrency:** a single module-level `sparkBusy` flag serializes Ask, Spark, and
-briefing. A second concurrent request returns `429`. This keeps only one `claude`
-process alive at a time. The relay (below) shares the same flag through
+**Concurrency:** a single module-level `sparkBusy` flag serializes every `claude`
+call — Ask, Spark, briefing, **intent**, and the weekly **digest**. This keeps only
+one `claude` process alive at a time. On a collision the behaviour differs by caller:
+Ask, Spark, briefing, and intent return `429`; the digest (like the briefing's
+auto-generation) instead returns its stats immediately with `pending:true` and no
+reflection, so the client can retry. The relay (below) shares the same flag through
 `aiAcquire()`/`aiRelease()`: instead of `429`-ing it *waits* for the flag to clear
 before each turn, so a Claude turn and a Codex turn never run concurrently.
 

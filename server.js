@@ -32,7 +32,7 @@ const ROOT = __dirname;
 // docs/version.json (the update manifest), so the two can never drift. The update
 // CHECK is user-initiated only (no automatic outbound, nothing phoned home — see
 // SECURITY.md).
-const VERSION = '1.2.0';
+const VERSION = '1.4.0';
 const UPDATE_MANIFEST = process.env.OASIS_UPDATE_MANIFEST || 'https://dakota1450.github.io/OASIS/version.json';
 const PUBLIC_DIR = path.join(ROOT, 'public');
 const SITE_DIR = path.join(ROOT, 'docs');                // marketing page (also the GitHub Pages site)
@@ -47,6 +47,9 @@ const JOURNAL_FILE = path.join(DATA_DIR, 'journal.json');
 const ASK_HISTORY_FILE = path.join(DATA_DIR, 'ask-history.json');
 const BRIEFINGS_FILE = path.join(DATA_DIR, 'briefings.json');
 const RELAYS_FILE = path.join(DATA_DIR, 'relays.json');       // Claude×Codex orchestration runs
+const REMINDERS_FILE = path.join(DATA_DIR, 'reminders.json'); // Jarvis voice reminders (fired client-side)
+const STASH_FILE = path.join(DATA_DIR, 'stash.json');        // snippet / clipboard vault
+const DIGESTS_FILE = path.join(DATA_DIR, 'digests.json');    // cached weekly recap (one claude reflection/day)
 
 const HOME = os.homedir();
 const CLAUDE_PROJECTS = path.join(HOME, '.claude', 'projects');
@@ -176,6 +179,9 @@ function ensureFiles() {
   if (!fs.existsSync(ASK_HISTORY_FILE)) fs.writeFileSync(ASK_HISTORY_FILE, '[]');
   if (!fs.existsSync(BRIEFINGS_FILE)) fs.writeFileSync(BRIEFINGS_FILE, '{}');
   if (!fs.existsSync(RELAYS_FILE)) fs.writeFileSync(RELAYS_FILE, '[]');
+  if (!fs.existsSync(REMINDERS_FILE)) fs.writeFileSync(REMINDERS_FILE, '[]');
+  if (!fs.existsSync(STASH_FILE)) fs.writeFileSync(STASH_FILE, '[]');
+  if (!fs.existsSync(DIGESTS_FILE)) fs.writeFileSync(DIGESTS_FILE, '{}');
   if (!fs.existsSync(CONFIG_FILE)) fs.writeFileSync(CONFIG_FILE, '{}');
 }
 
@@ -645,6 +651,140 @@ Signals to draw on (use only what's notable, don't list them): ${stats.done} tas
     if (insight) { const c = readJson(BRIEFINGS_FILE, {}); c[key] = { insight, stats, generatedAt: new Date().toISOString() }; writeJson(BRIEFINGS_FILE, c); }
     sendJson(res, 200, { ok: true, date: key, insight, stats });
   }).catch(() => { sparkBusy = false; sendJson(res, 200, { ok: true, date: key, insight: '', stats }); });
+}
+
+// ---------- weekly digest ("recap my week" — a richer, 7-day reflection) ----------
+// Like the daily briefing but rolls up the past seven days and asks for a couple
+// of warm sentences. Stats are computed locally and always returned; the reflection
+// is one cached `runClaude` per local day (so a re-ask is instant), guarded by the
+// same `sparkBusy` lock — a collision returns the stats with `pending:true`.
+function handleDigest(req, res) {
+  const weekAgo = Date.now() - 7 * 86400000;
+  const within = (iso) => { const t = Date.parse(iso); return isFinite(t) && t >= weekAgo; };
+  const todos = readJson(TODOS_FILE, []);
+  const journal = readJson(JOURNAL_FILE, []);
+  const notes = readJson(NOTES_FILE, []);
+  const reminders = readJson(REMINDERS_FILE, []);
+  const jWeek = journal.filter((j) => within(j.created));
+  const moods = {}; jWeek.forEach((j) => { if (j.mood) moods[j.mood] = (moods[j.mood] || 0) + 1; });
+  const mood = Object.keys(moods).sort((a, b) => moods[b] - moods[a])[0] || '';
+  const counts = getActivity().counts || { claude: 0, codex: 0 };
+  const stats = {
+    done: todos.filter((t) => t.done && within(t.created)).length,
+    open: todos.filter((t) => !t.done).length,
+    journal: jWeek.length,
+    ideas: notes.filter((n) => within(n.created)).length,
+    reminders: reminders.filter((r) => !r.done).length,
+    mood, claude: counts.claude || 0, codex: counts.codex || 0,
+  };
+  const key = localDateKey();
+  const cache = readJson(DIGESTS_FILE, {});
+  if (cache[key] && cache[key].reflection) return sendJson(res, 200, { ok: true, date: key, reflection: cache[key].reflection, stats });
+  if (sparkBusy) return sendJson(res, 200, { ok: true, date: key, reflection: '', stats, pending: true });
+  sparkBusy = true;
+  const prompt = `Write a warm, grounding weekly reflection (2 to 3 sentences, max 45 words) in second person about how someone's past week of building has gone. No preamble, no quotes, no markdown, no lists, no numbers spelled out — just the sentences. Be encouraging and specific to the signals; don't merely list them, and never mention "threads" or "sessions".
+Signals from the last 7 days (use only what's notable): ${stats.done} task${stats.done === 1 ? '' : 's'} completed, ${stats.open} still open, ${stats.ideas} idea${stats.ideas === 1 ? '' : 's'} captured, ${stats.journal} journal entr${stats.journal === 1 ? 'y' : 'ies'}${mood ? `, mostly feeling "${mood}"` : ''}.`;
+  runClaude(prompt).then((result) => {
+    sparkBusy = false;
+    let reflection = result.ok ? ((result.text || '').trim().split('\n').filter((l) => l.trim()).join(' ')) : '';
+    reflection = reflection.replace(/^["'\s]+|["'\s]+$/g, '').slice(0, 400);
+    if (reflection) { const c = readJson(DIGESTS_FILE, {}); c[key] = { reflection, stats, generatedAt: new Date().toISOString() }; writeJson(DIGESTS_FILE, c); }
+    sendJson(res, 200, { ok: true, date: key, reflection, stats });
+  }).catch(() => { sparkBusy = false; sendJson(res, 200, { ok: true, date: key, reflection: '', stats }); });
+}
+
+// ---------- intent (voice → structured action) ----------
+// The brain behind "Jarvis". The frontend handles common phrasings with a fast
+// local regex grammar; anything it misses comes here. We ask the local `claude`
+// CLI to classify ONE spoken request into a single structured action + extract
+// its arguments — NOT to answer it. A request that isn't an Oasis action comes
+// back as {"action":"none"}, and the frontend then routes it to a full spoken
+// Ask. This keeps the classifier fast and reliable, and reuses the same local
+// CLI (no new dependency, no new outbound traffic). Output is untrusted free
+// text → sliced to balanced JSON and shape-checked, same as spark/ask.
+
+// The verbs Jarvis can perform. Kept in one place so the prompt and the
+// validator never drift; the frontend dispatch map mirrors this list.
+const INTENT_ACTIONS = [
+  'add_task', 'add_idea', 'add_journal', 'complete_task',
+  'set_reminder', 'cancel_reminder', 'start_timer', 'stop_timer',
+  'set_scene', 'play_music', 'pause_music', 'open_panel',
+  'brief', 'digest', 'brainstorm', 'read_tasks', 'read_ideas', 'read_reminders',
+  'stash_add', 'stash_read', 'stash_copy', 'launch_tool', 'none',
+];
+function buildIntentPrompt(text, ctx) {
+  const c = ctx && typeof ctx === 'object' ? ctx : {};
+  const tasks = Array.isArray(c.tasks) ? c.tasks.slice(0, 12) : [];
+  const tools = Array.isArray(c.tools) ? c.tools.slice(0, 24) : [];
+  // The server runs on the user's own machine, so server time IS their local time.
+  // Use it rather than interpolating a client-supplied string into the prompt.
+  const now = new Date().toString();
+  return `You are the intent parser for "Jarvis", the voice assistant inside a local builder's dashboard called Oasis. Convert ONE spoken request into a single structured action. You do NOT answer questions or hold conversation — you only classify and extract. Return ONLY a JSON object, no markdown, no commentary.
+
+Shape: {"action":"<action>","args":{...},"say":"<optional short confirmation, <=14 words>"}
+
+Actions and their args:
+- "add_task" {"text"} — capture a to-do for the Today list
+- "add_idea" {"text"} — save an idea
+- "add_journal" {"text"} — add a journal entry / log a reflection
+- "complete_task" {"text"} — mark an existing open task done; "text" = the task to match
+- "set_reminder" {"text","when"} — be reminded later. "when" = the timing phrase VERBATIM as said (e.g. "in 20 minutes", "at 3pm", "tomorrow at 9", "tonight"); "text" = what to be reminded about
+- "cancel_reminder" {"text"} — cancel a reminder ("text" optional, empty = the most recent)
+- "start_timer" {"minutes"} — a focus timer (integer minutes)
+- "stop_timer" {} — stop/pause the timer
+- "set_scene" {"scene"} — backdrop, scene one of: dawn, day, dusk, night, auto
+- "play_music" {} / "pause_music" {}
+- "open_panel" {"panel"} — panel one of: gallery, terminal, relay, settings, shortcuts, console
+- "brief" {} — the daily briefing / "how's my day"
+- "digest" {} — the weekly recap / "how was my week" / "week in review"
+- "brainstorm" {"topic"} — generate fresh ideas about a topic
+- "read_tasks" {} — read my open tasks aloud
+- "read_ideas" {} — read my recent ideas aloud
+- "read_reminders" {} — read my upcoming reminders aloud
+- "stash_add" {"text"} — save a snippet, command, link, or scrap of text to the stash (a clipboard vault) for later
+- "stash_read" {} — read back what's in the stash
+- "stash_copy" {"text"} — copy a saved stash item to the clipboard; "text" = which one to match (empty = the most recent)
+- "launch_tool" {"name"} — open one of my dock tools; "name" = best match from the tools list
+- "none" {} — the request is a question, fact, calculation, or conversation, NOT one of the actions above. Use this whenever in doubt.
+
+Context (match names against these; never invent a task or tool that isn't listed):
+- Now: ${now}
+- Open tasks: ${tasks.length ? JSON.stringify(tasks) : 'none'}
+- Dock tools: ${tools.length ? JSON.stringify(tools) : 'none'}
+
+Rules:
+- Choose exactly one action. Prefer "none" over guessing — a misfire is worse than deferring to a full answer.
+- Copy timing phrases for "when" exactly as spoken; do not convert to a clock time.
+- "say" is optional and read aloud; keep it natural and short.
+- Output the JSON object only.
+
+REQUEST: ${text}`;
+}
+async function handleIntent(req, res) {
+  let body; try { body = await readBody(req); } catch { return sendJson(res, 400, { ok: false, error: 'bad request' }); }
+  const text = (typeof body.text === 'string' ? body.text : '').trim();
+  if (!text) return sendJson(res, 400, { ok: false, error: 'nothing to parse' });
+  if (text.length > 600) return sendJson(res, 200, { ok: true, intent: { action: 'none', args: {} } });  // too long to be a command
+  if (sparkBusy) return sendJson(res, 429, { ok: false, error: 'busy' });
+  sparkBusy = true;   // claim immediately (no await between) — keeps one-call-at-a-time
+  try {
+    const result = await runClaude(buildIntentPrompt(text, body.context));
+    if (!result.ok) return sendJson(res, 200, result);
+    const obj = extractJson(result.text, false);
+    const action = obj && typeof obj.action === 'string' ? obj.action.trim() : '';
+    if (!INTENT_ACTIONS.includes(action)) return sendJson(res, 200, { ok: true, intent: { action: 'none', args: {} } });
+    const args = obj.args && typeof obj.args === 'object' && !Array.isArray(obj.args) ? obj.args : {};
+    const clean = {};                                   // keep only short string/number args
+    for (const k of Object.keys(args)) {
+      const v = args[k];
+      if (typeof v === 'string') clean[k] = v.slice(0, 280);
+      else if (typeof v === 'number' && isFinite(v)) clean[k] = v;
+    }
+    const say = typeof obj.say === 'string' ? obj.say.replace(/\s+/g, ' ').trim().slice(0, 140) : '';
+    return sendJson(res, 200, { ok: true, intent: { action, args: clean, say } });
+  } finally {
+    sparkBusy = false;
+  }
 }
 
 // ---------- relay: Claude × Codex orchestration ----------
@@ -1286,10 +1426,12 @@ async function handleApi(req, res, url) {
 
   // ask — the main search bar (freeform AI answer)
   if (url.pathname === '/api/ask' && req.method === 'POST') return handleAsk(req, res);
+  if (url.pathname === '/api/intent' && req.method === 'POST') return handleIntent(req, res);
   if (url.pathname === '/api/ask-history' && req.method === 'GET') return sendJson(res, 200, readJson(ASK_HISTORY_FILE, []).slice(0, 30));
   if (url.pathname === '/api/ask-history' && req.method === 'DELETE') { writeJson(ASK_HISTORY_FILE, []); return sendJson(res, 200, { ok: true }); }
   if (seg[0] === 'api' && seg[1] === 'ask-history' && seg[2] && req.method === 'DELETE') { writeJson(ASK_HISTORY_FILE, readJson(ASK_HISTORY_FILE, []).filter((h) => h.id !== seg[2])); return sendJson(res, 200, { ok: true }); }
   if (url.pathname === '/api/briefing' && req.method === 'GET') return handleBriefing(req, res);
+  if (url.pathname === '/api/digest' && req.method === 'GET') return handleDigest(req, res);
 
   // spark
   if (url.pathname === '/api/spark' && req.method === 'POST') return handleSpark(req, res);
@@ -1369,6 +1511,75 @@ async function handleApi(req, res, url) {
     return sendJson(res, 200, { ok: true });
   }
 
+  // reminders — Jarvis "remind me to … in 20 minutes". The due time fires in the
+  // browser (chime + spoken alert); the server is just durable storage so they
+  // survive a reload. `due` is an ISO timestamp, validated and horizon-capped.
+  if (url.pathname === '/api/reminders' && req.method === 'GET') {
+    const items = readJson(REMINDERS_FILE, []).sort((a, b) => (a.due || '').localeCompare(b.due || ''));
+    return sendJson(res, 200, items);
+  }
+  if (url.pathname === '/api/reminders' && req.method === 'POST') {
+    const body = await readBody(req);
+    const text = (body.text || '').trim().slice(0, 200);
+    if (!text) return sendJson(res, 400, { error: 'empty reminder' });
+    const t = Date.parse(body.due);
+    if (!isFinite(t)) return sendJson(res, 400, { error: 'bad time' });
+    const now = Date.now();
+    if (t > now + 366 * 86400000) return sendJson(res, 400, { error: 'too far out' });   // > 1 year → reject
+    const items = readJson(REMINDERS_FILE, []);
+    const rem = { id: newId(), text, due: new Date(Math.max(t, now)).toISOString(), done: false, created: new Date().toISOString() };
+    items.push(rem);
+    writeJson(REMINDERS_FILE, items.slice(-200));        // keep the file bounded
+    return sendJson(res, 200, rem);
+  }
+  if (seg[0] === 'api' && seg[1] === 'reminders' && seg[2] && req.method === 'PATCH') {
+    const body = await readBody(req);
+    const items = readJson(REMINDERS_FILE, []);
+    const rem = items.find((x) => x.id === seg[2]);
+    if (!rem) return sendJson(res, 404, { error: 'not found' });
+    if (typeof body.done === 'boolean') rem.done = body.done;
+    if (typeof body.text === 'string' && body.text.trim()) rem.text = body.text.trim().slice(0, 200);
+    if (body.due !== undefined) { const t = Date.parse(body.due); if (isFinite(t)) rem.due = new Date(t).toISOString(); }
+    writeJson(REMINDERS_FILE, items);
+    return sendJson(res, 200, rem);
+  }
+  if (seg[0] === 'api' && seg[1] === 'reminders' && seg[2] && req.method === 'DELETE') {
+    writeJson(REMINDERS_FILE, readJson(REMINDERS_FILE, []).filter((x) => x.id !== seg[2]));
+    return sendJson(res, 200, { ok: true });
+  }
+
+  // stash — a snippet / clipboard vault: keep a command, link, prompt, or scrap of
+  // text and copy it back later. Pinned items sort first, then newest.
+  if (url.pathname === '/api/stash' && req.method === 'GET') {
+    const items = readJson(STASH_FILE, []).sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || (b.created || '').localeCompare(a.created || ''));
+    return sendJson(res, 200, items);
+  }
+  if (url.pathname === '/api/stash' && req.method === 'POST') {
+    const body = await readBody(req);
+    const text = (body.text || '').trim().slice(0, 8000);
+    if (!text) return sendJson(res, 400, { error: 'empty stash' });
+    const items = readJson(STASH_FILE, []);
+    const item = { id: newId(), text, label: typeof body.label === 'string' ? body.label.trim().slice(0, 80) : '', pinned: false, created: new Date().toISOString() };
+    items.unshift(item);
+    writeJson(STASH_FILE, items.slice(0, 500));         // keep the vault bounded
+    return sendJson(res, 200, item);
+  }
+  if (seg[0] === 'api' && seg[1] === 'stash' && seg[2] && req.method === 'PATCH') {
+    const body = await readBody(req);
+    const items = readJson(STASH_FILE, []);
+    const item = items.find((x) => x.id === seg[2]);
+    if (!item) return sendJson(res, 404, { error: 'not found' });
+    if (typeof body.pinned === 'boolean') item.pinned = body.pinned;
+    if (typeof body.text === 'string' && body.text.trim()) item.text = body.text.trim().slice(0, 8000);
+    if (typeof body.label === 'string') item.label = body.label.trim().slice(0, 80);
+    writeJson(STASH_FILE, items);
+    return sendJson(res, 200, item);
+  }
+  if (seg[0] === 'api' && seg[1] === 'stash' && seg[2] && req.method === 'DELETE') {
+    writeJson(STASH_FILE, readJson(STASH_FILE, []).filter((x) => x.id !== seg[2]));
+    return sendJson(res, 200, { ok: true });
+  }
+
   // journal — dated reflective entries
   if (url.pathname === '/api/journal' && req.method === 'GET') {
     const items = readJson(JOURNAL_FILE, []).sort((a, b) => (b.created || '').localeCompare(a.created || ''));
@@ -1437,8 +1648,9 @@ async function handleApi(req, res, url) {
         notes: readJson(NOTES_FILE, []), todos: readJson(TODOS_FILE, []),
         journal: readJson(JOURNAL_FILE, []), askHistory: readJson(ASK_HISTORY_FILE, []),
         sparks: readJson(SPARKS_FILE, []), briefings: readJson(BRIEFINGS_FILE, {}),
-        relays: readJson(RELAYS_FILE, []), tools: readJson(TOOLS_FILE, []),
-        config: readJson(CONFIG_FILE, {}),
+        relays: readJson(RELAYS_FILE, []), reminders: readJson(REMINDERS_FILE, []),
+        stash: readJson(STASH_FILE, []), digests: readJson(DIGESTS_FILE, {}),
+        tools: readJson(TOOLS_FILE, []), config: readJson(CONFIG_FILE, {}),
       },
     };
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8',
