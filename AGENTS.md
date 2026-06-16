@@ -20,8 +20,12 @@ local `claude` CLI), **Ideas** capture + "develop into angles", a **Today** task
 list, a **Journal**, an image **Gallery**, a once-a-day **briefing**, a quiet
 **ticker** of recent Claude Code / Codex sessions, and a **tool dock** that
 launches the user's projects. **Voice control** (opt-in, the browser's own Web
-Speech API) and **fully customizable keyboard shortcuts** sit on top — both are
-pure frontend, in `app.js`.
+Speech API) and **fully customizable keyboard shortcuts** sit on top — mostly
+frontend in `app.js`. The voice layer ("Jarvis") adds **reminders**, a **stash**
+(snippet/clipboard vault), a **weekly digest** ("recap my week"), and an
+**intent engine** (`/api/intent`) that classifies free-form speech into a single
+structured action by reusing the same local `claude` CLI (no new egress); a
+genuine question still routes to a full spoken **Ask**.
 
 It is **free, cross-platform (macOS + Windows), with no account, no telemetry,
 nothing phoned home.** Treat those four properties as inviolable product

@@ -46,6 +46,8 @@
   <symbol id="i-mic-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 9V6a3 3 0 0 1 5.9-.7M15 11.4V6M5.5 11.5a6.5 6.5 0 0 0 9.8 5.6M18.5 11.5a6.5 6.5 0 0 1-.6 2.7M12 18v3M8.5 21h7M4 4l16 16"/></symbol>
   <symbol id="i-keyboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 9.5h.01M9.5 9.5h.01M13 9.5h.01M16.5 9.5h.01M6 13h.01M16.5 13h.01M9 15.5h6"/></symbol>
   <symbol id="i-wave" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 12h.01M7 8v8M11 5v14M15 8v8M19 11v2M21 12h.01"/></symbol>
+  <symbol id="i-stash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"><path d="M12 3.5l8 4-8 4-8-4z"/><path d="M4 12l8 4 8-4M4 16l8 4 8-4"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3.5h6l-1 5 3 3v2H7v-2l3-3z"/><path d="M12 13.5V20"/></symbol>
 </defs></svg>
 
 <!-- ======= the sea — looping cinemagraph video (photo poster = instant paint + fallback) ======= -->
@@ -68,6 +70,7 @@
       <button id="btn-terminal" class="chip" title="Open a terminal"><svg class="ic"><use href="#i-terminal"></use></svg></button>
       <button id="btn-relay" class="chip" title="Relay — Claude × Codex"><svg class="ic"><use href="#i-relay"></use></svg></button>
       <button id="btn-gallery" class="chip" title="Gallery"><svg class="ic"><use href="#i-grid"></use></svg></button>
+      <button id="btn-stash" class="chip" title="Stash — your snippet & clipboard vault (C)"><svg class="ic"><use href="#i-stash"></use></svg></button>
       <button id="btn-voice" class="chip" title="Voice — hands-free listening (Shift V)"><svg class="ic"><use href="#i-mic"></use></svg></button>
       <button id="open-settings" class="chip" title="Preferences"><svg class="ic"><use href="#i-settings"></use></svg></button>
     </div>
@@ -247,6 +250,23 @@
   </div>
 </div>
 
+<!-- ======= stash: a snippet / clipboard vault ======= -->
+<div id="stash" class="hidden" role="dialog" aria-modal="true" aria-label="Stash">
+  <div class="stash-shade"></div>
+  <div class="stash-box">
+    <div class="stash-head">
+      <h2>Stash</h2>
+      <input id="stash-search" type="text" placeholder="Search your stash" autocomplete="off" spellcheck="false">
+      <button id="stash-close" title="Close (Esc)" aria-label="Close"><svg class="ic"><use href="#i-x"></use></svg></button>
+    </div>
+    <form id="stash-add" autocomplete="off">
+      <input id="stash-text" type="text" placeholder="Stash a command, link, snippet, or prompt…" autocomplete="off" spellcheck="false">
+      <button type="submit" title="Stash it" aria-label="Add to stash"><svg class="ic"><use href="#i-plus"></use></svg></button>
+    </form>
+    <div id="stash-list"></div>
+  </div>
+</div>
+
 <!-- ======= relay: Claude × Codex orchestration ======= -->
 <div id="relay" class="hidden" role="dialog" aria-modal="true" aria-label="Relay — Claude and Codex">
   <div class="rl-shade"></div>
@@ -324,6 +344,7 @@
       <div class="cs-title"><span class="cs-mark"><svg class="ic"><use href="#i-mic"></use></svg></span><h2>Console</h2></div>
       <div class="cs-tabs" role="tablist">
         <button class="cs-tab active" data-tab="voice" role="tab">Voice</button>
+        <button class="cs-tab" data-tab="jarvis" role="tab">Jarvis</button>
         <button class="cs-tab" data-tab="shortcuts" role="tab">Shortcuts</button>
       </div>
       <button id="console-close" class="cs-iconbtn" title="Close (Esc)" aria-label="Close"><svg class="ic"><use href="#i-x"></use></svg></button>
@@ -383,6 +404,21 @@
       </details>
 
       <p class="cs-fineprint">Voice is off until you turn it on, and the mic only opens while you're listening. Speech is transcribed by your browser's built-in recognition — in some browsers (Chrome, Edge) that means the audio is sent to the browser maker's speech service. Oasis itself sends nothing and keeps no recordings; talking aloud is optional.</p>
+    </div>
+
+    <div class="cs-pane" data-pane="jarvis">
+      <div class="cs-block">
+        <div class="cs-block-head"><div class="cs-row-name">Reminders</div><div class="cs-row-sub">Say “remind me to… in 20 minutes / at 3 PM / tomorrow”, or add one here. They chime and speak when due — even with voice muted.</div></div>
+        <form id="rem-add" class="rem-add" autocomplete="off">
+          <input id="rem-text" type="text" placeholder="Remind me to…  e.g. call Sam at 3pm" spellcheck="false">
+          <button type="submit" class="cs-btn">Add</button>
+        </form>
+        <div id="rem-list" class="rem-list"></div>
+      </div>
+      <div class="cs-block">
+        <div class="cs-block-head"><div class="cs-row-name">Recent activity</div><div class="cs-row-sub">What Jarvis last heard and did.</div></div>
+        <div id="jv-log" class="jv-log"></div>
+      </div>
     </div>
 
     <div class="cs-pane" data-pane="shortcuts">

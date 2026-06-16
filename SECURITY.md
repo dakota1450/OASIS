@@ -132,13 +132,23 @@ and `.git/` — backing the program files up first and rolling back if the copy 
 - **Request bodies** are capped at 2 MB (`readBody`); oversized bodies destroy the
   connection.
 - **Model output is never trusted** as code or markup — it's parsed defensively
-  (`extractJson`, shape validation) and only ever rendered as text/markdown.
+  (`extractJson`, shape validation) and only ever rendered as text/markdown. The
+  **voice-intent** classifier (`/api/intent`) is stricter still: its action must be
+  in the `INTENT_ACTIONS` allow-list or it degrades to `none`, and its returned args
+  are filtered to short strings/finite numbers — no arbitrary objects propagate. Its
+  prompt interpolates only server-derived values (e.g. server-local time), never a
+  raw client string.
+- **Write endpoints validate and cap their inputs.** The reminders and stash CRUD
+  (`/api/reminders`, `/api/stash`) require non-empty text, cap field lengths, bound
+  the stored list, and (reminders) parse + horizon-cap the `due` timestamp — all via
+  `readJson`/`writeJson` with fallbacks, like every other data file.
 - **No delete-from-disk endpoint** exists for gallery assets, by design — the app
   can reveal a file but never remove a user's file.
 
 ### Availability
-- A single `sparkBusy` flag serializes AI calls (Ask / Spark / briefing); extra
-  concurrent requests get `429`, so a burst can't spawn many `claude` processes.
+- A single `sparkBusy` flag serializes every `claude` call (Ask / Spark / briefing /
+  intent / digest); extra concurrent requests get `429` (the digest returns
+  `pending` instead), so a burst can't spawn many `claude` processes.
 
 ## Known limitations (accepted trade-offs)
 

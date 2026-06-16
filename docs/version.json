@@ -1,6 +1,6 @@
 {
-  "version": "1.2.0",
-  "notes": "Voice control - talk to Oasis hands-free with a wake word or push-to-talk; it answers aloud through your local claude CLI and runs commands ('add a task...', 'brief me', 'start a 25 minute timer', 'make it night'). New: voice dictation (speak and it types, with spoken punctuation), read-back ('what's on my plate'), and a Console for fully customizable keyboard shortcuts plus voice settings. Voice is opt-in and the mic only opens while you're listening.",
-  "windows": "https://dakota1450.github.io/OASIS/download/Oasis-Windows.zip",
-  "macos": "https://dakota1450.github.io/OASIS/download/Oasis-macOS.zip"
+    "version":  "1.4.0",
+    "notes":  "Two new tools, reachable by click, keyboard, palette, and voice. Stash - a snippet \u0026 clipboard vault: keep a command, link, prompt, or scrap of text and copy it back in one click or by voice (\u0027stash this\u0027, \u0027copy the deploy command\u0027, \u0027what\u0027s in my stash\u0027); pin and search. Weekly digest - \u0027recap my week\u0027: a seven-day rollup (tasks, ideas, journal \u0026 mood, sessions) with a warm Claude-written reflection, on demand. Jarvis understands all of it through the same intent engine. Still free, local-only, no account, no telemetry, no new dependency.",
+    "windows":  "https://dakota1450.github.io/OASIS/download/Oasis-Windows.zip",
+    "macos":  "https://dakota1450.github.io/OASIS/download/Oasis-macOS.zip"
 }

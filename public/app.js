@@ -165,16 +165,17 @@ async function ask(q, speakIt) {
   q = (q || '').trim();
   if (!q) { $('#ask-input').focus(); return; }
   if (asking) { toast('Still thinking on the last one'); if (speakIt) voiceSay('Still thinking on the last one.'); return; }
-  asking = true; const gen = ++askGen; $('#ask').classList.add('busy'); $('#ask-go').disabled = true; $('#ask-ideas').disabled = true;
+  asking = true; const gen = ++askGen; const vHeard = speakIt ? lastHeard : null;   // attribute the spoken answer to this question, not whatever's said during the wait
+  $('#ask').classList.add('busy'); $('#ask-go').disabled = true; $('#ask-ideas').disabled = true;
   fillAnswer(`<div class="ans-card thinking"><span class="ripple-dots"><i></i><i></i><i></i></span>Thinking…</div>`);
   try {
     const r = await fetch('/api/ask', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ q }) });
     const data = await r.json();
     if (gen !== askGen) return;                                  // dismissed / superseded
-    if (!data.ok) { clearAnswer(); toast(data.error || 'No answer came back'); if (speakIt) voiceSay("I couldn't reach the assistant."); return; }
+    if (!data.ok) { clearAnswer(); toast(data.error || 'No answer came back'); if (speakIt) voiceSay("I couldn't reach the assistant.", { heard: vHeard }); return; }
     renderAnswer(q, data.answer);
-    if (speakIt) voiceSay(data.answer, { followup: true });      // read the answer aloud; stay armed for a follow-up
-  } catch { if (gen === askGen) { clearAnswer(); toast("Couldn't reach the assistant"); if (speakIt) voiceSay("I couldn't reach the assistant."); } }
+    if (speakIt) voiceSay(data.answer, { followup: true, heard: vHeard });      // read the answer aloud; stay armed for a follow-up
+  } catch { if (gen === askGen) { clearAnswer(); toast("Couldn't reach the assistant"); if (speakIt) voiceSay("I couldn't reach the assistant.", { heard: vHeard }); } }
   finally { asking = false; $('#ask').classList.remove('busy'); $('#ask-go').disabled = false; $('#ask-ideas').disabled = false; }
 }
 function renderAnswer(q, answer) {
@@ -825,7 +826,12 @@ function paletteActions() {
   add('mic', 'Talk to Oasis — push to talk', 'voice', () => { closePalette(); voicePushToTalk(); }, 'speak listen jarvis microphone command say voice');
   add('mic', 'Voice: hands-free listening', 'voice', () => { closePalette(); toggleHandsFree(); }, 'wake word jarvis always on microphone hey voice');
   add('feather', 'Dictate into a field', 'voice', () => { closePalette(); dictateDefault(); }, 'dictation speech to text transcribe write note voice type');
+  add('stash', 'Open stash', 'workspace', () => { closePalette(); openStash(); }, 'snippet clipboard vault clip save command link prompt paste');
+  add('stash', 'Stash a snippet', 'workspace', () => { closePalette(); openStash(); }, 'add capture command link prompt clipboard keep');
+  add('sun', 'Recap my week', 'voice', () => { closePalette(); showDigest(false); }, 'weekly digest review summary how was my week recap');
   add('mic', 'Voice & wake-word settings', 'voice', () => { closePalette(); openConsole('voice'); }, 'jarvis speech configure assistant talk');
+  add('clock', 'Set a reminder', 'voice', () => { closePalette(); openConsole('jarvis'); setTimeout(() => { const e = $('#rem-text'); if (e) e.focus(); }, 90); }, 'remind me alarm later notify nag jarvis ping');
+  add('mic', 'Jarvis console — reminders & activity', 'voice', () => { closePalette(); openConsole('jarvis'); }, 'assistant reminders transcript log history voice what did i say');
   add('keyboard', 'Keyboard shortcuts', 'system', () => { closePalette(); openConsole('shortcuts'); }, 'keys bindings rebind hotkeys customize remap shortcut');
   add('settings', 'Preferences', 'system', () => { closePalette(); openSetup(true); }, 'settings config');
   add('refresh', 'Check for updates', 'system', () => { closePalette(); checkForUpdates(false); }, 'update upgrade version new release');
@@ -1046,7 +1052,7 @@ function exportData() {
 function modalOpen() {
   return paletteOpen() || consoleOpen() || relayOpen() || anyPopOpen() || !!$('#term-menu')
     || !$('#setup').classList.contains('hidden') || !$('#gallery').classList.contains('hidden')
-    || !$('#lightbox').classList.contains('hidden');
+    || !$('#stash').classList.contains('hidden') || !$('#lightbox').classList.contains('hidden');
 }
 function keyboardInit() {
   document.addEventListener('keydown', (e) => {
@@ -1059,6 +1065,7 @@ function keyboardInit() {
       if (consoleOpen()) return closeConsole();
       if (relayOpen()) return closeRelay();
       if (!$('#lightbox').classList.contains('hidden')) return closeLightbox();
+      if (!$('#stash').classList.contains('hidden')) return closeStash();
       if (!$('#gallery').classList.contains('hidden')) return closeGallery();
       if (!$('#setup').classList.contains('hidden')) return closeSetup();
       if (!$('#tool-add').classList.contains('hidden')) return $('#tool-add').classList.add('hidden');
@@ -1598,11 +1605,13 @@ const KEY_DEFS = [
   { id: 'voicePTT',   group: 'Voice',   label: 'Talk to Oasis (push to talk)', def: 'Mod+/', run: () => voicePushToTalk() },
   { id: 'voiceWake',  group: 'Voice',   label: 'Toggle hands-free listening', def: 'Shift+V', run: () => toggleHandsFree() },
   { id: 'dictate',    group: 'Voice',   label: 'Dictate into a field',        def: 'D',      run: () => dictateDefault() },
+  { id: 'reminders',  group: 'Voice',   label: 'Reminders & Jarvis console',  def: 'Shift+R', run: () => openConsole('jarvis') },
   { id: 'goToday',    group: 'Capture', label: 'Today — capture a task',      def: 'T',     run: () => { showTab('today'); $('#today-input').focus(); } },
   { id: 'goIdeas',    group: 'Capture', label: 'Ideas — capture an idea',     def: 'I',     run: () => { showTab('ideas'); $('#ideas-input').focus(); } },
   { id: 'goJournal',  group: 'Capture', label: 'New journal entry',           def: 'J',     run: () => $('#journal-input').focus() },
   { id: 'timer',      group: 'Workspace', label: 'Focus timer',              def: 'F',      run: () => toggleTimer() },
   { id: 'gallery',    group: 'Workspace', label: 'Gallery',                  def: 'G',      run: () => openGallery() },
+  { id: 'stash',      group: 'Workspace', label: 'Stash — snippet vault',     def: 'C',      run: () => openStash() },
   { id: 'relay',      group: 'Workspace', label: 'Relay — Claude × Codex',   def: 'R',      run: () => openRelay() },
   { id: 'terminal',   group: 'Workspace', label: 'Terminal',                 def: '`',      run: () => $('#btn-terminal').click() },
   { id: 'music',      group: 'Workspace', label: 'Play / pause music',       def: 'M',      run: () => radioToggle() },
@@ -1643,6 +1652,120 @@ function prettyChord(chord) {
 }
 const chordIsGlobal = (chord) => chord.includes('Mod') || chord.includes('Alt');   // fires even while typing
 
+/* ================= stash — a snippet / clipboard vault ================= */
+/* Keep a command, link, prompt, or scrap of text and copy it back later — by
+   click or by voice ("stash this", "copy the deploy command", "what's in my
+   stash"). Server-backed CRUD; pinned items float to the top. */
+let stashItems = [], stashFilter = '';
+async function loadStash() { try { stashItems = (await (await fetch('/api/stash')).json()) || []; } catch { stashItems = []; } renderStash(); }
+function openStash() { $('#stash').classList.remove('hidden'); loadStash(); setTimeout(() => { const s = $('#stash-text'); if (s) s.focus(); }, 60); }
+function closeStash() { $('#stash').classList.add('hidden'); }
+function stashMatches(q) {
+  q = (q || '').toLowerCase().trim();
+  return q ? stashItems.filter((s) => (s.text + ' ' + (s.label || '')).toLowerCase().includes(q)) : stashItems;
+}
+function renderStash() {
+  const box = $('#stash-list'); if (!box) return;
+  const items = stashMatches(stashFilter);
+  if (!items.length) { box.innerHTML = `<div class="stash-empty">${stashFilter ? 'No matches.' : 'Nothing stashed yet. Capture a command, link, or snippet above — or say “stash this”.'}</div>`; return; }
+  box.innerHTML = items.map((s) => `<div class="stash-item${s.pinned ? ' pinned' : ''}" data-id="${s.id}">
+    <button class="stash-body" data-act="copy" title="Click to copy">
+      ${s.label ? `<span class="stash-label">${esc(s.label)}</span>` : ''}
+      <span class="stash-textline">${esc(s.text)}</span>
+      <span class="stash-when">${esc(relTime(s.created))}</span>
+    </button>
+    <div class="stash-ops">
+      <button data-act="pin" title="${s.pinned ? 'Unpin' : 'Pin'}" aria-label="Pin">${icon('pin')}</button>
+      <button data-act="copy" title="Copy">${icon('copy')}</button>
+      <button data-act="del" title="Delete" aria-label="Delete">${icon('trash')}</button>
+    </div></div>`).join('');
+}
+async function addStashItem(text, label) {
+  const t = String(text || '').trim(); if (!t) return null;
+  try {
+    const item = await (await fetch('/api/stash', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text: t, label: label || '' }) })).json();
+    if (item && item.id) { stashItems.unshift(item); renderStash(); return item; }
+  } catch {}
+  return null;
+}
+async function togglePinStash(id) {
+  const s = stashItems.find((x) => x.id === id); if (!s) return;
+  s.pinned = !s.pinned;
+  stashItems.sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || (b.created || '').localeCompare(a.created || ''));
+  renderStash();
+  try { await fetch('/api/stash/' + id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pinned: s.pinned }) }); } catch {}
+}
+async function deleteStashItem(id) {
+  stashItems = stashItems.filter((x) => x.id !== id); renderStash();
+  try { await fetch('/api/stash/' + id, { method: 'DELETE' }); } catch {}
+}
+function stashInit() {
+  $('#btn-stash').addEventListener('click', openStash);
+  $('#stash-close').addEventListener('click', closeStash);
+  $('.stash-shade').addEventListener('click', closeStash);
+  $('#stash-add').addEventListener('submit', (e) => { e.preventDefault(); const inp = $('#stash-text'); const v = (inp.value || '').trim(); if (!v) return; addStashItem(v).then((ok) => { if (ok) { inp.value = ''; toast('Stashed'); } }); });
+  $('#stash-search').addEventListener('input', (e) => { stashFilter = e.target.value; renderStash(); });
+  $('#stash-list').addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-act]'); const row = e.target.closest('.stash-item'); if (!btn || !row) return;
+    const id = row.dataset.id, s = stashItems.find((x) => x.id === id); if (!s) return;
+    if (btn.dataset.act === 'copy') toast((await copyText(s.text)) ? 'Copied' : 'Copy failed');
+    else if (btn.dataset.act === 'pin') togglePinStash(id);
+    else if (btn.dataset.act === 'del') deleteStashItem(id);
+  });
+}
+// voice: add / read / copy
+function stashByVoice(text) {
+  const t = String(text || '').replace(/\s+/g, ' ').trim();   // preserve case — it may be a command or link
+  if (!t) { voiceSay('What would you like to stash?'); return; }
+  addStashItem(t).then((ok) => voiceSay(ok ? 'Stashed it.' : "I couldn't save that to your stash."));
+}
+function speakStash() {
+  if (!stashItems.length) { voiceSay('Your stash is empty.'); return; }
+  const top = stashItems.slice(0, 5).map((s, i) => `${i + 1}. ${s.label ? s.label + ': ' : ''}${s.text}`).join('. ');
+  voiceSay(`You have ${stashItems.length} item${stashItems.length === 1 ? '' : 's'} stashed. ${top}.`);
+}
+async function copyStashByVoice(q) {
+  if (!stashItems.length) { voiceSay('Your stash is empty.'); return; }
+  q = String(q || '').toLowerCase().replace(/\b(from (my )?stash|the|my|stash|item|clip|snippet|one)\b/g, '').replace(/\s+/g, ' ').trim();
+  const newest = [...stashItems].sort((a, b) => (b.created || '').localeCompare(a.created || ''))[0];
+  const hit = (q && stashItems.find((s) => (s.text + ' ' + (s.label || '')).toLowerCase().includes(q))) || newest;
+  if (await copyText(hit.text)) voiceSay(`Copied: ${hit.label || hit.text}.`);
+  else { openStash(); voiceSay('I’ve opened your stash — tap an item to copy it.'); }
+}
+
+/* ================= weekly digest — "recap my week" ================= */
+/* A richer cousin of the daily briefing: a 7-day rollup + a couple of warm,
+   Claude-written sentences. Cached server-side per day; spoken when asked by voice. */
+function renderDigest(data, speakIt, heard) {
+  const s = data.stats || {};
+  const line = data.reflection || (data.pending ? 'Looking back over your week…' : 'A fresh week — not much logged yet.');
+  const chip = (val, label) => `<span class="brief-chip"><b>${val}</b> ${label}</span>`;
+  fillAnswer(`<div class="ans-card brief digest">
+    <div class="brief-kicker">Your week</div>
+    <div class="brief-line ${data.reflection ? '' : 'empty-line'}">${esc(line)}</div>
+    <div class="brief-stats">
+      ${chip(s.done || 0, 'done')}
+      ${chip(s.open || 0, 'open')}
+      ${chip(s.ideas || 0, s.ideas === 1 ? 'idea' : 'ideas')}
+      ${chip(s.journal || 0, s.journal === 1 ? 'journal entry' : 'journal entries')}
+      ${s.mood ? `<span class="brief-chip"><span class="dot" style="background:${moodColor(s.mood)}"></span>${esc(s.mood)}</span>` : ''}
+    </div></div>`);
+  if (speakIt && data.reflection) voiceSay(data.reflection, { heard });
+  else if (speakIt && !data.pending) voiceSay('Not much logged this week yet.', { heard });
+}
+async function showDigest(speakIt, heard) {
+  if (heard === undefined) heard = speakIt ? lastHeard : null;   // attribute the spoken recap to the request, not a later utterance
+  closeAllPops();
+  const gen = ++askGen;
+  fillAnswer(`<div class="ans-card thinking"><span class="ripple-dots"><i></i><i></i><i></i></span>Looking back over your week…</div>`);
+  try {
+    const data = await (await fetch('/api/digest')).json();
+    if (gen !== askGen) return;
+    renderDigest(data, speakIt, heard);
+    if (data.pending) setTimeout(async () => { try { const d2 = await (await fetch('/api/digest')).json(); if (gen === askGen && !d2.pending) renderDigest(d2, speakIt, heard); } catch {} }, 7000);
+  } catch { if (gen === askGen) { clearAnswer(); toast('Could not load your weekly recap'); if (speakIt) voiceSay("I couldn't put together your week.", { heard }); } }
+}
+
 /* ================= voice — "Jarvis" (Web Speech: STT in, TTS out) ================= */
 /* Zero-dependency: the browser's own SpeechRecognition + speechSynthesis. Two
    ways in: hands-free (always listening for your wake word) and push-to-talk
@@ -1657,6 +1780,8 @@ let voicePrefs = { handsFree: false, wake: 'oasis', speak: true, voiceURI: '', r
 let recog = null, recRunning = false, recWantOn = false, armed = false, armTimer = 0;
 let selfSpeaking = false, lastSpokeAt = 0, restartTimer = 0, hudHideTimer = 0;
 let lastSpokenText = '';                               // for "repeat that"
+let lastHeard = '';                                    // last utterance, attributed to the next reply (transcript)
+let jarvisLog = [];                                    // recent {at, heard, said} exchanges, newest first
 // dictation: stream speech into a field instead of parsing commands
 let dictating = false, dictTarget = null, dictBase = '', dictRaw = [];
 
@@ -1702,6 +1827,7 @@ function plainSpeech(s) {
 function voiceSay(text, opts) {
   const s = plainSpeech(text); if (!s) return;
   lastSpokenText = s;
+  recordExchange(s, opts && opts.heard != null ? opts.heard : null);
   hud.cap(s, 'reply');
   if (!voicePrefs.speak || !SYNTH) { hud.idleHide(); maybeFollowUp(opts); return; }
   try {
@@ -1835,6 +1961,7 @@ function parseMinutes(s) {
 function handleUtterance(raw, direct) {
   const said = String(raw || '').trim();
   hud.cap(said, 'heard');
+  lastHeard = said;                                     // attributed to the next spoken reply (transcript)
   const t = cleanCmd(said);
   if (!t) return;
 
@@ -1848,7 +1975,7 @@ function handleUtterance(raw, direct) {
     return;
   }
   if (/^(hello|hi|hey|good (morning|afternoon|evening)|you there|are you there|wake up)\b/.test(t)) { reply(greetLine()); return; }
-  if (/^(help|what can (you|i) (do|say)|commands?)\b/.test(t)) { openConsole('voice'); reply('You can ask me anything, capture tasks, ideas or journal notes, start a timer, brief your day, or open any panel. The full list is on screen.'); return; }
+  if (/^(help|what can (you|i) (do|say)|commands?)\b/.test(t)) { openConsole('voice'); reply('Ask me anything, set reminders, stash snippets, capture tasks, ideas or journal notes, complete a task, start a timer, do quick math, recap your week, or open any panel. The full list is on screen.'); return; }
   if (/\bwhat('s| is) the time\b|\bwhat time is it\b|\btell me the time\b/.test(t)) { reply('It’s ' + new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) + '.'); return; }
   if (/\bwhat('s| is) (the |today'?s )?date\b|\bwhat day is it\b/.test(t)) { reply('Today is ' + new Date().toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' }) + '.'); return; }
 
@@ -1873,6 +2000,7 @@ function handleUtterance(raw, direct) {
     if (seed) $('#ask-input').value = seed;
     driftIdeas(seed); reply('Brainstorming a few ideas.'); return;
   }
+  if (/\b(recap|review|sum(?:up|mary|marise|marize)|digest)\b.*\bweek\b/.test(t) || /\b(this|my|the|past|last) week\b/.test(t) || /^(weekly (recap|digest|review|summary))\b/.test(t) || /\bweek in review\b/.test(t) || /\bhow (was|did) my week\b/.test(t)) { showDigest(true); hud.state('thinking'); return; }
   if (/\b(brief me|briefing|how('s| is) my day|catch me up|my day|status report)\b/.test(t)) { showBriefing(); hud.state('thinking'); reply('Here’s your day so far.'); return; }
 
   if (/\b(gallery|images|pictures)\b/.test(t)) { openGallery(); reply('Opening the gallery.'); return; }
@@ -1916,20 +2044,146 @@ function handleUtterance(raw, direct) {
   // ---- complete a task by voice ----
   if ((g = m(/^(?:mark|complete|finish|check off|cross off|tick off)\s+(.+)$/))) { completeTaskByVoice(g[1]); return; }
 
-  if ((g = m(/^(?:launch|open|start|run|fire up)\s+(.+)$/))) {
-    const want = tidy(g[1]).toLowerCase();
-    const tool = (dockTools || []).find((x) => x.name.toLowerCase() === want) || (dockTools || []).find((x) => x.name.toLowerCase().includes(want) || want.includes(x.name.toLowerCase()));
-    if (tool) { launchTool(tool.id, primaryAction(tool)); reply('Launching ' + tool.name + '.'); return; }
-    // fall through to Ask if no tool matched
+  // ---- reminders ----
+  if (/^reminders?\b\??$/.test(t) || (/\breminders?\b/.test(t) && /\b(what|read|list|any|do i have|show|tell me|upcoming)\b/.test(t))) { speakReminders(); return; }
+  if (/\b(cancel|clear|delete|remove|forget|drop)\b.*\breminders?\b/.test(t)) { cancelReminderByVoice(t); return; }
+  if ((g = m(/^(?:remind me|set (?:a |the )?reminder|reminder|remind)(?:\s+(?:to|that|about|me))?\s+(.+)$/))) { setReminderByVoice(g[1]); return; }
+
+  // ---- stash (snippet / clipboard vault) ----
+  if (/^stash\b\??$/.test(t) || (/\bstash\b/.test(t) && /\b(what('s| is)|read|show|list|any|in my|do i have|open)\b/.test(t) && !/^(stash|save to stash|add to stash)\b/.test(t))) {
+    if (/\bopen\b/.test(t)) { openStash(); reply('Here’s your stash.'); } else speakStash();
+    return;
+  }
+  if ((g = m(/^(?:copy|grab|paste|get|pull up)\s+(.*?)\s*(?:from (?:my )?stash|out of (?:my )?stash)$/)) || /^(?:copy|grab|paste)\s+(?:my\s+)?(?:last|latest|recent|most recent)\b.*\bstash\b/.test(t) || /^copy from (?:my )?stash$/.test(t)) {
+    copyStashByVoice(g ? g[1] : ''); return;
+  }
+  if ((g = m(/^(?:stash|save to stash|add to stash|keep this in (?:my )?stash)\b(?:\s+(?:this|that|it))?\s*[:]?\s*(.*)$/))) {
+    let body = (g[1] || '').trim();
+    if (!body || /^(this|that|it)$/i.test(body)) body = ($('#ask-input').value || '').trim() || lastSpokenText;
+    stashByVoice(body); return;
   }
 
-  // default: treat it as a question for the assistant, and read the answer aloud
-  $('#ask-input').value = said; hud.state('thinking'); voiceAsk(said);
+  // ---- launch a dock tool ----
+  if ((g = m(/^(?:launch|open|start|run|fire up)\s+(.+)$/))) {
+    if (launchToolByName(g[1])) return;
+    // fall through to the intent engine if no tool matched
+  }
+
+  // ---- instant local answers (math, %, conversions) — no model, no network ----
+  const qa = quickAnswer(t);
+  if (qa) { reply(qa); return; }
+
+  // ---- anything else: let the intent engine decide (act on it), else a full spoken Ask ----
+  smartHandle(said);
+}
+function launchToolByName(raw) {
+  const want = tidy(raw).toLowerCase().replace(/[.?!]+$/, '');
+  const tool = (dockTools || []).find((x) => x.name.toLowerCase() === want)
+    || (dockTools || []).find((x) => x.name.toLowerCase().includes(want) || want.includes(x.name.toLowerCase()));
+  if (!tool) return false;
+  launchTool(tool.id, primaryAction(tool)); voiceSay('Launching ' + tool.name + '.'); return true;
 }
 const tidy = (s) => String(s || '').replace(/\s+/g, ' ').trim().replace(/^[a-z]/, (c) => c.toUpperCase());
 function greetLine() { const h = new Date().getHours(); const who = cfg.name ? ', ' + cfg.name : ''; const g = h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening'; return `${g}${who}. How can I help?`; }
 function voiceAsk(q) { ask(q, true); }
 function syncVoiceSliders() { const r = $('#cs-rate'); if (r) r.value = voicePrefs.rate; const p = $('#cs-pitch'); if (p) p.value = voicePrefs.pitch; }
+
+/* ---- the brain: hand an unrecognised phrase to the intent engine, act on it,
+   and only fall back to a full spoken Ask if it isn't an Oasis action ---- */
+async function smartHandle(said) {
+  hud.state('thinking'); hud.cap('Thinking…', 'hint');
+  let intent = null;
+  try { intent = await askIntent(said); } catch {}
+  lastHeard = said;                                    // restore attribution — a slow intent call may have been interleaved with another utterance
+  if (intent && intent.action && intent.action !== 'none') { dispatchIntent(intent); return; }
+  // not an action — a genuine question: answer it in full, read aloud
+  $('#ask-input').value = said; hud.state('thinking'); voiceAsk(said);
+}
+async function askIntent(text) {
+  const r = await fetch('/api/intent', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, context: await intentContext() }) });
+  if (!r.ok) return null;                               // 429 busy / 400 → treat as no-intent
+  const data = await r.json();
+  return data && data.ok ? data.intent : null;
+}
+// Compact, name-matching context so the engine can complete/launch by name.
+async function intentContext() {
+  let tasks = [];
+  try { tasks = ((await (await fetch('/api/todos')).json()) || []).filter((x) => !x.done).slice(0, 12).map((x) => x.text); } catch {}
+  return { tasks, tools: (dockTools || []).map((x) => x.name).slice(0, 24) };
+}
+function dispatchIntent(it) {
+  const a = it.action, args = it.args || {}, say = it.say || '';
+  const sayOr = (def) => voiceSay(say || def);
+  const txt = (k) => tidy(typeof args[k] === 'string' ? args[k] : '');
+  switch (a) {
+    case 'add_task': { const x = txt('text'); if (x) { addTask(x.length > 120 ? x.slice(0, 119) + '…' : x); sayOr('Added to Today: ' + x); } else voiceSay("What's the task?"); break; }
+    case 'add_idea': { const x = txt('text'); if (x) { keepIdea(x, 'me'); sayOr('Saved that idea.'); } else voiceSay('What should I remember?'); break; }
+    case 'add_journal': { const x = txt('text'); if (x) { addJournal(x, ''); sayOr('Logged in your journal.'); } else voiceSay('What would you like to note?'); break; }
+    case 'complete_task': completeTaskByVoice(txt('text')); break;
+    case 'set_reminder': setReminderByVoice(`${txt('text')} ${typeof args.when === 'string' ? args.when : ''}`.trim(), txt('text'), args.when); break;
+    case 'cancel_reminder': cancelReminderByVoice(`cancel reminder ${txt('text')}`); break;
+    case 'start_timer': { const mins = Math.max(1, Math.min(180, Math.round(+args.minutes || 0))) || 25; startTimer(mins); sayOr(`Focus timer started — ${mins} minutes.`); break; }
+    case 'stop_timer': stopTimer(false); sayOr('Timer stopped.'); break;
+    case 'set_scene': { const map = { dark: 'night', bright: 'day', morning: 'dawn', evening: 'dusk', automatic: 'auto' }; const p = map[(args.scene || '').toLowerCase()] || (args.scene || '').toLowerCase(); if (['dawn', 'day', 'dusk', 'night', 'auto'].includes(p)) { setPhaseControl(p); sayOr('Scene set to ' + p + '.'); } else voiceSay("I can set the scene to dawn, day, dusk, night, or auto."); break; }
+    case 'play_music': { const au = $('#radio-audio'); if (au && au.paused) radioToggle(); sayOr('Playing music.'); break; }
+    case 'pause_music': { const au = $('#radio-audio'); if (au && !au.paused) au.pause(); sayOr('Music paused.'); break; }
+    case 'open_panel': openPanelByName((args.panel || '').toLowerCase(), say); break;
+    case 'brief': showBriefing(); hud.state('thinking'); sayOr('Here’s your day so far.'); break;
+    case 'digest': showDigest(true); hud.state('thinking'); break;
+    case 'brainstorm': { const seed = txt('topic'); if (seed) $('#ask-input').value = seed; driftIdeas(seed); sayOr('Brainstorming a few ideas.'); break; }
+    case 'read_tasks': speakTasks(false); break;
+    case 'read_ideas': speakIdeas(); break;
+    case 'read_reminders': speakReminders(); break;
+    case 'stash_add': stashByVoice(typeof args.text === 'string' ? args.text : ''); break;
+    case 'stash_read': speakStash(); break;
+    case 'stash_copy': copyStashByVoice(typeof args.text === 'string' ? args.text : ''); break;
+    case 'launch_tool': if (!launchToolByName(args.name || '')) voiceSay("I couldn't find a tool called " + (args.name || 'that') + '.'); break;
+    default: if (say) voiceSay(say); else { $('#ask-input').value = lastHeard; voiceAsk(lastHeard); }
+  }
+}
+function openPanelByName(p, say) {
+  const open = { gallery: openGallery, terminal: () => $('#btn-terminal').click(), relay: openRelay, settings: () => openSetup(true), shortcuts: () => openConsole('shortcuts'), console: () => openConsole('voice'), reminders: () => openConsole('jarvis') }[p];
+  if (open) { open(); voiceSay(say || ('Opening ' + p + '.')); } else voiceSay("I'm not sure which panel you mean.");
+}
+
+/* ---- instant local answers: math, percentages, unit & temperature conversions.
+   Handled entirely on-device so simple questions are instant and work offline. ---- */
+const fmtNum = (v) => { const r = Math.round(v * 1e6) / 1e6; return Number.isInteger(r) ? String(r) : String(r); };
+const UNIT_SYN = { kilometre: 'km', kilometer: 'km', kilometres: 'km', kilometers: 'km', km: 'km', mile: 'mi', miles: 'mi', mi: 'mi', metre: 'm', meter: 'm', metres: 'm', meters: 'm', m: 'm', foot: 'ft', feet: 'ft', ft: 'ft', centimetre: 'cm', centimeter: 'cm', centimetres: 'cm', centimeters: 'cm', cm: 'cm', inch: 'in', inches: 'in', in: 'in', kilogram: 'kg', kilograms: 'kg', kg: 'kg', kilo: 'kg', kilos: 'kg', pound: 'lb', pounds: 'lb', lb: 'lb', lbs: 'lb', celsius: 'c', centigrade: 'c', c: 'c', fahrenheit: 'f', f: 'f' };
+const CONV = {
+  'km>mi': (v) => v * 0.621371, 'mi>km': (v) => v / 0.621371, 'm>ft': (v) => v * 3.280839, 'ft>m': (v) => v / 3.280839,
+  'cm>in': (v) => v / 2.54, 'in>cm': (v) => v * 2.54, 'kg>lb': (v) => v * 2.204623, 'lb>kg': (v) => v / 2.204623,
+  'c>f': (v) => v * 9 / 5 + 32, 'f>c': (v) => (v - 32) * 5 / 9,
+};
+function quickAnswer(t) {
+  let m;
+  if ((m = t.match(/(-?\d+(?:\.\d+)?)\s*(?:%|percent)\s+of\s+(-?\d+(?:\.\d+)?)/))) return `That's ${fmtNum((+m[1] / 100) * +m[2])}.`;
+  if ((m = t.match(/(?:convert\s+)?(-?\d+(?:\.\d+)?)\s*°?\s*([a-z]+)\s+(?:in|to|into)\s+°?\s*([a-z]+)/))) {
+    const from = UNIT_SYN[m[2]], to = UNIT_SYN[m[3]], fn = from && to && CONV[from + '>' + to];
+    if (fn) return `${fmtNum(+m[1])} ${m[2]} is ${fmtNum(fn(+m[1]))} ${m[3]}.`;
+  }
+  // plain arithmetic — words → operators, then guard to math-only chars before eval
+  let e = t.replace(/\bwhat(?:'s| is)\b|\bcalculate\b|\bcompute\b|\bequals?\b|=|\?/g, '')
+    .replace(/\bplus\b/g, '+').replace(/\bminus\b/g, '-').replace(/\b(?:times|multiplied by|x)\b/g, '*')
+    .replace(/\b(?:divided by|over)\b/g, '/').replace(/\b(?:to the power of|power)\b/g, '**').trim();
+  if (/\d[\s\d.+\-*/()]*[-+*/][\s\d.+\-*/()]*\d/.test(e) && /^[\s\d.+\-*/()]+$/.test(e)) {
+    try { const v = Function('"use strict"; return (' + e + ');')(); if (typeof v === 'number' && isFinite(v)) return `That's ${fmtNum(v)}.`; } catch {}
+  }
+  return null;
+}
+
+/* ---- transcript: every spoken reply is logged with what was last heard.
+   An async reply (Ask, digest) passes the utterance it was kicked off from, so a
+   command that interleaves during the wait can't steal the attribution. ---- */
+function recordExchange(spoken, heardOverride) {
+  const heard = heardOverride != null ? heardOverride : lastHeard;
+  lastHeard = '';
+  jarvisLog.unshift({ at: Date.now(), heard, said: spoken });
+  if (jarvisLog.length > 40) jarvisLog.length = 40;
+  try { localStorage.setItem('oasis_jarvis_log', JSON.stringify(jarvisLog)); } catch {}
+  if (typeof consoleOpen === 'function' && consoleOpen()) renderJarvisLog();
+}
+function loadJarvisLog() { try { jarvisLog = JSON.parse(localStorage.getItem('oasis_jarvis_log')) || []; } catch { jarvisLog = []; } }
 
 /* ---- read-back helpers (spoken lists, drawn from the live data) ---- */
 async function speakTasks(onlyNext) {
@@ -2052,6 +2306,165 @@ function onDictationResult(e) {
   }
 }
 
+/* ================= reminders — "remind me to … in 20 minutes" ================= */
+/* Stored on the server so they survive a reload; the actual alert (chime + spoken
+   line + HUD) fires here in the page. Near-term reminders get an in-tab timer;
+   a 30s sweep re-arms the rest and fires anything that came due while away. They
+   work even with voice muted — the chime + toast always play. */
+let reminders = [], remTimers = {};
+async function loadReminders() {
+  try { reminders = (await (await fetch('/api/reminders')).json()) || []; } catch { reminders = []; }
+  scheduleReminders(); renderReminders();
+}
+function scheduleReminders() {
+  Object.values(remTimers).forEach(clearTimeout); remTimers = {};
+  const now = Date.now();
+  reminders.filter((r) => !r.done).forEach((r) => {
+    const delay = new Date(r.due).getTime() - now;
+    if (delay <= 0) fireReminder(r);
+    else if (delay < 6 * 3600 * 1000) remTimers[r.id] = setTimeout(() => fireReminder(r), delay);  // arm near-term; the sweep re-arms the rest
+  });
+}
+function fireReminder(r) {
+  if (!r || r.done) return;
+  r.done = true;                                        // guard against a double fire (timer + sweep)
+  clearTimeout(remTimers[r.id]); delete remTimers[r.id];
+  chime(); toast('Reminder — ' + r.text);
+  hud.show(); voiceSay('Reminder. ' + r.text);          // speaks only if voice is on; the chime + toast always play
+  fetch('/api/reminders/' + r.id, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ done: true }) }).catch(() => {});
+  renderReminders();
+}
+async function addReminder(text, due) {
+  try {
+    const r = await (await fetch('/api/reminders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text, due: due.toISOString() }) })).json();
+    if (r && r.id) { reminders.push(r); scheduleReminders(); renderReminders(); return r; }
+  } catch {}
+  return null;
+}
+async function cancelReminder(id) {
+  clearTimeout(remTimers[id]); delete remTimers[id];
+  reminders = reminders.filter((r) => r.id !== id);
+  renderReminders();
+  try { await fetch('/api/reminders/' + id, { method: 'DELETE' }); } catch {}
+}
+function upcomingReminders() { return reminders.filter((r) => !r.done).sort((a, b) => (a.due || '').localeCompare(b.due || '')); }
+
+// Split "call Sam in 20 minutes" → { text:"call Sam", when:"in 20 minutes" }.
+const WHEN_CUE = /\b((?:in\s+(?:a|an|half|one|two|three|four|five|ten|fifteen|twenty|thirty|forty|fifty|sixty|ninety|\d).*)|(?:at\s+(?:noon|midnight|\d).*)|(?:tomorrow\b.*)|(?:tonight\b.*)|(?:this\s+(?:afternoon|evening|morning)\b.*))$/i;
+function splitReminder(s) {
+  s = String(s || '').trim();
+  const m = s.match(WHEN_CUE);
+  if (m) { const text = s.slice(0, m.index).replace(/\b(?:to|at|in|by)\s*$/i, '').replace(/[,\s]+$/, '').trim(); return { text, when: m[1].trim() }; }
+  return { text: s, when: '' };
+}
+// Natural-language time → a Date (or null). Relative ("in 20 minutes"), clock
+// ("at 3pm", "at 15:30", "at noon"), and day-relative ("tomorrow at 9", "tonight").
+function parseWhen(raw) {
+  const s = String(raw || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  if (!s) return null;
+  const now = new Date();
+  const addMin = (n) => new Date(now.getTime() + Math.round(n * 60000));
+  const rel = s.match(/\bin\s+(.+)$/);
+  if (rel) {
+    const r = rel[1];
+    if (/half an hour|half hour/.test(r)) return addMin(30);
+    if (/\b(?:an|one|1) hour\b/.test(r)) return addMin(60);
+    const wk = r.match(/(\d+(?:\.\d+)?)\s*(?:weeks?|wks?|w)\b/);
+    const dy = r.match(/(\d+(?:\.\d+)?)\s*(?:days?|d)\b/);
+    const h = r.match(/(\d+(?:\.\d+)?)\s*(?:hours?|hrs?|h)\b/);
+    const mi = r.match(/(\d+)\s*(?:minutes?|mins?|m)\b/);
+    const se = r.match(/(\d+)\s*(?:seconds?|secs?|s)\b/);
+    if (wk || dy || h || mi || se) return new Date(now.getTime()
+      + (wk ? +wk[1] * 604800000 : 0) + (dy ? +dy[1] * 86400000 : 0)
+      + (h ? +h[1] * 3600000 : 0) + (mi ? +mi[1] * 60000 : 0) + (se ? +se[1] * 1000 : 0));
+    if (/\b(day|week)s?\b/.test(r)) { const wn = parseMinutes(r); if (wn) return new Date(now.getTime() + wn * (/\bweeks?\b/.test(r) ? 604800000 : 86400000)); }
+    const wn = parseMinutes(r); if (wn) return /\bhours?\b/.test(r) ? addMin(wn * 60) : addMin(wn);
+    const d = r.match(/(\d{1,4})/); if (d) return addMin(+d[1]);     // bare number → minutes
+    return null;
+  }
+  const setAt = (h, mi, dayOffset) => { const d = new Date(now); d.setSeconds(0, 0); d.setHours(h, mi || 0); if (dayOffset) d.setDate(d.getDate() + dayOffset); else if (d <= now) d.setDate(d.getDate() + 1); return d; };
+  const tom = /\btomorrow\b/.test(s);
+  if (/\btonight\b/.test(s)) return setAt(20, 0, tom ? 1 : 0);
+  if (/\bthis afternoon\b/.test(s)) return setAt(15, 0, tom ? 1 : 0);
+  if (/\bthis evening\b/.test(s)) return setAt(18, 0, tom ? 1 : 0);
+  if (/\bthis morning\b/.test(s)) return setAt(9, 0, tom ? 1 : 0);
+  if (/\bnoon\b/.test(s)) return setAt(12, 0, tom ? 1 : 0);
+  if (/\bmidnight\b/.test(s)) return setAt(0, 0, tom ? 1 : 0);
+  const tm = s.match(/\bat\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/) || s.match(/\b(\d{1,2})(?::(\d{2}))\s*(am|pm)?/);
+  if (tm) {
+    let h = +tm[1]; const mi = tm[2] ? +tm[2] : 0; const ap = tm[3];
+    if (ap === 'pm' && h < 12) h += 12;
+    if (ap === 'am' && h === 12) h = 0;
+    if (!ap && h >= 1 && h <= 7) h += 12;               // bare "at 3" → afternoon
+    if (h > 23 || mi > 59) return null;
+    return setAt(h, mi, tom ? 1 : 0);
+  }
+  if (tom) return setAt(9, 0, 1);                        // "tomorrow" with no time → 9am
+  return null;
+}
+function whenSpoken(due) {
+  if (!(due instanceof Date) || isNaN(due)) return 'soon';
+  const mins = Math.round((due - Date.now()) / 60000);
+  if (mins < 1) return 'in a moment';
+  if (mins < 60) return `in ${mins} minute${mins === 1 ? '' : 's'}`;
+  const time = due.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  if (due.toDateString() === new Date().toDateString()) return `at ${time}`;
+  const tm = new Date(); tm.setDate(tm.getDate() + 1);
+  if (due.toDateString() === tm.toDateString()) return `tomorrow at ${time}`;
+  return `on ${due.toLocaleDateString([], { weekday: 'long' })} at ${time}`;
+}
+function setReminderByVoice(raw, explicitText, explicitWhen) {
+  let text, when;
+  if (explicitWhen && String(explicitWhen).trim()) { text = tidy(explicitText || ''); when = String(explicitWhen); }
+  else { const sp = splitReminder(raw); text = tidy(sp.text); when = sp.when; }
+  if (!when) { voiceSay('When should I remind you? Try “in 20 minutes”, “at 3 PM”, or “tomorrow at 9”.'); return; }
+  const due = parseWhen(when);
+  if (!due) { voiceSay('I didn’t catch the time — try “in 20 minutes” or “at 3 PM”.'); return; }
+  const body = text || 'this';
+  addReminder(body, due).then((ok) => voiceSay(ok ? `Okay — I’ll remind you ${whenSpoken(due)}: ${body}.` : 'I couldn’t save that reminder.'));
+}
+function speakReminders() {
+  const up = upcomingReminders();
+  if (!up.length) { voiceSay('You have no reminders set.'); return; }
+  const top = up.slice(0, 5).map((r) => `${r.text}, ${whenSpoken(new Date(r.due))}`).join('. ');
+  voiceSay(`You have ${up.length} reminder${up.length === 1 ? '' : 's'}. ${top}.`);
+}
+function cancelReminderByVoice(t) {
+  const up = upcomingReminders();
+  if (!up.length) { voiceSay('You have no reminders to cancel.'); return; }
+  if (/\b(all|everything|every)\b/.test(t)) { const n = up.length; up.forEach((r) => cancelReminder(r.id)); voiceSay(`Cleared ${n} reminder${n === 1 ? '' : 's'}.`); return; }
+  const q = t.replace(/.*\breminders?\b/, '').replace(/^\s*(?:to|about|for|that|the)\b/, '').replace(/\s+/g, ' ').trim();
+  const hit = (q && up.find((r) => r.text.toLowerCase().includes(q))) || up[0];
+  cancelReminder(hit.id);
+  voiceSay(up.length > 1 ? `Cancelled: ${hit.text}.` : `Cancelled your reminder: ${hit.text}.`);
+}
+function renderReminders() {
+  const box = $('#rem-list'); if (!box) return;
+  const up = upcomingReminders();
+  if (!up.length) { box.innerHTML = '<div class="rem-empty">No reminders set. Say “remind me to…”, or add one above.</div>'; return; }
+  box.innerHTML = up.map((r) => `<div class="rem-item" data-id="${r.id}">
+    <div class="rem-main"><span class="rem-text">${esc(r.text)}</span><span class="rem-when">${esc(remWhenLabel(new Date(r.due)))}</span></div>
+    <button class="rem-cancel" data-id="${r.id}" title="Cancel reminder" aria-label="Cancel reminder">${icon('x')}</button></div>`).join('');
+}
+function remWhenLabel(due) {
+  if (!(due instanceof Date) || isNaN(due)) return '';
+  const ms = due - Date.now();
+  if (ms < 0) return 'now';
+  const mins = Math.round(ms / 60000);
+  if (mins < 60) return `in ${mins} min`;
+  const time = due.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  if (due.toDateString() === new Date().toDateString()) return `today · ${time}`;
+  return due.toLocaleDateString([], { weekday: 'short' }) + ' · ' + time;
+}
+function renderJarvisLog() {
+  const box = $('#jv-log'); if (!box) return;
+  if (!jarvisLog.length) { box.innerHTML = '<div class="rem-empty">Nothing yet — talk to Jarvis and it shows up here.</div>'; return; }
+  box.innerHTML = jarvisLog.slice(0, 12).map((e) => `<div class="jv-log-item">
+    ${e.heard ? `<div class="jv-heard">“${esc(e.heard)}”</div>` : '<div class="jv-heard dim">Jarvis</div>'}
+    <div class="jv-said">${esc(e.said)}</div>
+    <div class="jv-when">${esc(relTime(new Date(e.at).toISOString()))}</div></div>`).join('');
+}
+
 /* ================= console — voice settings + shortcut rebinding ================= */
 const VOICE_PHRASES = [
   ['“What’s the most reliable way to debounce in JS?”', 'any question → answered by your claude CLI, read aloud'],
@@ -2059,6 +2472,12 @@ const VOICE_PHRASES = [
   ['…then “new paragraph”, “comma”, “period”, “scratch that”, “stop”', 'while dictating'],
   ['“Add a task: ship the release notes”', 'capture to Today'],
   ['“Mark ship the release notes done”', 'complete a task by name'],
+  ['“Remind me to call Sam in 20 minutes”', 'set a reminder (also “at 3pm”, “tomorrow at 9”, “tonight”)'],
+  ['“What are my reminders?” · “cancel that reminder”', 'review or clear reminders'],
+  ['“What’s 15% of 240?” · “convert 10 km to miles”', 'instant answer — no model needed'],
+  ['“Stash this: npm run deploy” · “copy the deploy command”', 'save & recall snippets, commands, links'],
+  ['“What’s in my stash?”', 'read back your stash'],
+  ['“Recap my week” · “how was my week?”', 'a weekly digest, read aloud'],
   ['“What’s on my plate?” · “what’s next?”', 'read your open tasks aloud'],
   ['“Remember: try the new embeddings model”', 'capture to Ideas'],
   ['“Journal: shipped the voice feature today”', 'add a journal entry'],
@@ -2076,7 +2495,7 @@ const consoleOpen = () => !$('#console').classList.contains('hidden');
 function openConsole(tab) {
   $('#console').classList.remove('hidden');
   switchConsoleTab(tab || 'voice');
-  fillVoiceSettings(); renderShortcuts();
+  fillVoiceSettings(); renderShortcuts(); renderReminders(); renderJarvisLog();
 }
 function closeConsole() { cancelRebind(); $('#console').classList.add('hidden'); }
 function switchConsoleTab(tab) {
@@ -2154,6 +2573,18 @@ function consoleInit() {
   $('#cs-beep').addEventListener('change', () => { voicePrefs.beep = $('#cs-beep').checked; saveVoicePrefs(); });
   $('#cs-autopunct').addEventListener('change', () => { voicePrefs.autoPunct = $('#cs-autopunct').checked; saveVoicePrefs(); });
   $('#cs-followup').addEventListener('change', () => { voicePrefs.followup = $('#cs-followup').checked; saveVoicePrefs(); });
+  // reminders (Jarvis tab)
+  const ra = $('#rem-add');
+  if (ra) ra.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const inp = $('#rem-text'); const v = (inp.value || '').trim(); if (!v) return;
+    const { text, when } = splitReminder(v);
+    const due = when && parseWhen(when);
+    if (!due) { toast('Add a time — e.g. “… in 30 minutes” or “… at 3pm”'); inp.focus(); return; }
+    addReminder(tidy(text) || 'Reminder', due).then((ok) => { if (ok) { inp.value = ''; toast('Reminder set ' + whenSpoken(due)); } else toast('Could not set reminder'); });
+  });
+  const rl = $('#rem-list');
+  if (rl) rl.addEventListener('click', (e) => { const b = e.target.closest('.rem-cancel'); if (b) cancelReminder(b.dataset.id); });
   // shortcuts
   $('#cs-keys').addEventListener('click', (e) => { const b = e.target.closest('.cs-chord'); if (b) startRebind(b.dataset.id); });
   $('#cs-keys-reset').addEventListener('click', () => { keyOverrides = {}; saveKeymap(); invalidateBindings(); renderShortcuts(); toast('Shortcuts reset to defaults'); });
@@ -2168,6 +2599,7 @@ function cycleScene() {
 
 function voiceInit() {
   loadVoicePrefs();
+  loadJarvisLog();
   syncVoiceUi();
   const chip = $('#btn-voice');
   if (chip) chip.addEventListener('click', toggleHandsFree);
@@ -2227,6 +2659,7 @@ function startTimers() {
     setInterval(loadTicker, 45000),
     setInterval(loadDock, 120000),
     setInterval(loadTasks, 90000),
+    setInterval(scheduleReminders, 30000),   // re-arm near-term reminders + fire any that came due
   ];
 }
 function stopTimers() { timers.forEach(clearInterval); timers = []; }
@@ -2234,7 +2667,7 @@ function visibilityInit() {
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) { seaPause(); stopTimers(); stopRelayPoll(); voiceSleep(); }   // also rest the relay poll + mic while hidden (perf budget)
     else {
-      seaResume(); tickClock(); applyPhase(); startTimers(); voiceWake();
+      seaResume(); tickClock(); applyPhase(); startTimers(); voiceWake(); loadReminders();   // re-sync + fire reminders that came due while hidden
       if (relayRunning && relayActiveId && !relayPollTimer) { pollRelay(); relayPollTimer = setInterval(pollRelay, 1500); }  // resume + catch up
     }
   });
@@ -2244,8 +2677,8 @@ function visibilityInit() {
 tickClock(); applyPhase();
 $('#sea-poster').addEventListener('error', () => document.body.classList.add('no-photo'));  // both video + poster gone → gradient
 document.addEventListener('pointerdown', seaResume, { once: true });                          // resume if autoplay was blocked
-sceneInit(); panelTabsInit(); askInit(); askHistoryInit(); ideasInit(); tasksInit(); journalInit(); galleryInit(); lightboxInit(); tickerInit(); dockInit(); playerInit(); paletteInit(); timerInit(); briefingInit(); agentLogInit(); terminalInit(); relayInit(); setupInit(); updateInit(); keymapInit(); voiceInit(); consoleInit(); visibilityInit(); keyboardInit();
-loadTasks(); loadIdeas(); loadJournal(); loadTicker(); loadDock();
+sceneInit(); panelTabsInit(); askInit(); askHistoryInit(); ideasInit(); tasksInit(); journalInit(); galleryInit(); stashInit(); lightboxInit(); tickerInit(); dockInit(); playerInit(); paletteInit(); timerInit(); briefingInit(); agentLogInit(); terminalInit(); relayInit(); setupInit(); updateInit(); keymapInit(); voiceInit(); consoleInit(); visibilityInit(); keyboardInit();
+loadTasks(); loadIdeas(); loadJournal(); loadTicker(); loadDock(); loadReminders(); loadStash();
 loadConfig().then(spotifyHandleRedirect);
 startTimers();
 maybeAutoBriefing();
